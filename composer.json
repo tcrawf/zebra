@@ -2,7 +2,7 @@
     "name": "tcrawf/zebra",
     "description": "A time tracking CLI tool.",
     "type": "project",
-    "version": "1.0.3-alpha",
+    "version": "1.0.4-alpha",
     "license": "GPL-3.0",
     "autoload": {
         "psr-4": {
@@ -26,6 +26,10 @@
             "email": "trent.crawford@liip.ch"
         }
     ],
+    "repository": {
+        "type": "vcs",
+        "url": "https://github.com/tcrawf/zebra"
+    },
     "require": {
         "php": "^8.4",
         "nesbot/carbon": "^2.0",
