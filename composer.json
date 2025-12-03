@@ -2,8 +2,12 @@
     "name": "tcrawf/zebra",
     "description": "A time tracking CLI tool.",
     "type": "project",
-    "version": "1.0.4-alpha",
-    "license": "GPL-3.0",
+    "license": "GPL-3.0-only",
+    "homepage": "https://github.com/tcrawf/zebra",
+    "support": {
+        "source": "https://github.com/tcrawf/zebra",
+        "issues": "https://github.com/tcrawf/zebra/issues"
+    },
     "autoload": {
         "psr-4": {
             "Tcrawf\\Zebra\\": "src/"
@@ -26,10 +30,6 @@
             "email": "trent.crawford@liip.ch"
         }
     ],
-    "repository": {
-        "type": "vcs",
-        "url": "https://github.com/tcrawf/zebra"
-    },
     "require": {
         "php": "^8.4",
         "nesbot/carbon": "^2.0",
