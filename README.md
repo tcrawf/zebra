@@ -35,6 +35,20 @@ Pull requests are welcome!
 
 ## Installation
 
+### Via Composer (Packagist)
+
+**Note**: This package is currently in alpha. To install via Composer, you must specify the stability level:
+
+```bash
+composer create-project tcrawf/zebra --stability=alpha
+```
+
+Or specify a specific version:
+
+```bash
+composer create-project tcrawf/zebra:1.0.6-alpha
+```
+
 ### From Source
 
 1. Clone the repository:

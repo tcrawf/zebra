@@ -70,7 +70,7 @@ class Application extends SymfonyApplication
 
     public function __construct()
     {
-        parent::__construct('zebra', '1.0.5-alpha');
+        parent::__construct('zebra', '1.0.6-alpha');
 
         // Initialize services directly in constructor for readonly properties
         $this->configStorage = new ConfigFileStorage();
