@@ -1,0 +1,97 @@
+# TimeTracker Project Rules
+
+## Project Overview
+This is a PHP 8.4 CLI time tracking application using strict types, PSR-12 coding standards, and a repository pattern architecture.
+
+## Code Style & Standards
+- **PHP Version**: PHP 8.4+ with `declare(strict_types=1);` at the top of every file
+- **Coding Standard**: PSR-12 Extended Coding Style Guide
+- **Code Quality**:
+  - Run `composer run phpcs-check` to check code style
+  - Run `composer run phpcbf-fix` to auto-fix style issues
+  - Run `composer run phpstan` for static analysis
+- **Namespace**: `Tcrawf\TimeTracker\` for source code, `Tcrawf\TimeTracker\Tests\` for tests
+
+## Architecture Patterns
+- **Interfaces First**: Always define interfaces (e.g., `UserRepositoryInterface`) before implementations
+- **Repository Pattern**: Use repositories for data access (e.g., `UserRepository`, `FrameRepository`)
+- **Dependency Injection**: Use constructor injection with `private readonly` properties
+- **Factory Pattern**: Use factories for object creation (e.g., `FrameFactory`, `CacheFileStorageFactory`)
+- **File Storage**: Use file-based storage classes extending `AbstractFileStorage` for persistence
+
+## Code Structure
+- **Source Code**: `src/` directory with PSR-4 autoloading
+- **Tests**: `tests/` directory mirroring `src/` structure
+- **CLI Entry Point**: `bin/track` executable
+- **Bootstrap**: `src/bootstrap.php` for initialization
+
+## Testing
+- **Framework**: PHPUnit 11+
+- **Test Naming**: Test classes end with `Test` (e.g., `FrameTest`)
+- **Test Methods**: Use descriptive method names starting with `test` (e.g., `testConstructorWithAllParameters`)
+- **Test Structure**: Use `setUp()` for test fixtures
+- **Coverage**: Aim for comprehensive test coverage
+- **Run Tests**: `composer run test` or `composer run test-coverage`
+- **New Features**: Always add test coverage for new features automatically, without being asked
+
+## Dependencies
+- **Carbon**: For date/time handling (always normalize to UTC)
+- **Guzzle**: For HTTP client operations
+- **PHPUnit**: For testing
+- **PHPStan**: For static analysis
+- **PHP CodeSniffer**: For code style checking
+
+## Best Practices
+1. **Type Safety**: Always use type hints for parameters and return types
+2. **Documentation**: Include PHPDoc blocks for all public methods and classes
+3. **Error Handling**: Use custom exceptions (e.g., `ZebraApiException`, `TimeTrackerError`)
+4. **Immutability**: Prefer readonly properties and immutable objects where possible
+5. **Validation**: Validate inputs and throw `InvalidArgumentException` for invalid data
+6. **Caching**: Use `CacheFileStorage` for caching API responses and frequently accessed data
+7. **Configuration**: Use `ConfigFileStorage` for application configuration
+
+## File Organization
+- Each domain (User, Frame, Activity, Project, etc.) has its own directory
+- Each domain typically contains:
+  - Interface file (e.g., `UserInterface.php`)
+  - Implementation file (e.g., `User.php`)
+  - Repository interface (e.g., `UserRepositoryInterface.php`)
+  - Repository implementation (e.g., `UserRepository.php`)
+  - API service interface and implementation (if applicable)
+
+## When Writing Code
+- Ensure always one new line at the end of the file and no more. This includes the last line of the file.
+- Always follow PSR-12 formatting
+- Use strict types declaration
+- **Automatically write tests for new functionality** - don't wait to be asked
+- Update interfaces before implementations
+- Use dependency injection, never instantiate dependencies directly
+- Handle null cases explicitly
+- Use Carbon for all date/time operations
+- Normalize all timestamps to UTC
+- Check code by running `composer run phpcs-check` and `composer run phpstan`
+- No new feature or refactor should reduce test coverage.
+
+## When Modifying Code
+- Run `composer run phpcs-check` before committing
+- Ensure all tests pass with `composer run test`
+- Run PHPStan to catch type errors
+- Maintain backward compatibility with existing interfaces
+- Update tests when changing behavior
+- If you remove all files in a folder, delete the folder as well
+
+## Workflow & Quality Assurance
+After making significant changes:
+1. **Code Style**: Run `composer run phpcs-check` to check for style issues
+2. **Auto-fix**: If style issues are found, run `composer run phpcbf-fix` to automatically fix them
+3. **Testing**: Run `composer run test` to ensure all tests pass
+4. **Test Coverage**: When adding new features, automatically create comprehensive test coverage without being asked
+5. **Static Analysis**: Run `composer run phpstan` to catch type errors and other issues
+
+**Significant changes include:**
+- Adding new classes, interfaces, or methods
+- Modifying existing functionality
+- Changing public APIs or interfaces
+- Adding new dependencies
+- Refactoring code structure
+

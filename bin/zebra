@@ -1,0 +1,43 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Tcrawf\Zebra\Command\Application;
+
+// bootstrap.php is automatically loaded via composer.json autoload.files
+// Find vendor/autoload.php
+// Works when running directly from package, when installed as dependency, or as PHAR
+$autoloadPath = null;
+
+// Check if running as PHAR
+$pharPath = Phar::running(false);
+if ($pharPath) {
+    // When running as PHAR, autoloader is included in the PHAR
+    $autoloadPath = 'phar://' . $pharPath . '/vendor/autoload.php';
+} else {
+    // Normal execution: traverse up directories to find vendor/autoload.php
+    $dir = __DIR__;
+    for ($i = 0; $i < 10; $i++) {
+        $potentialAutoload = $dir . '/vendor/autoload.php';
+        if (file_exists($potentialAutoload)) {
+            $autoloadPath = $potentialAutoload;
+            break;
+        }
+        $parentDir = dirname($dir);
+        if ($parentDir === $dir) {
+            // Reached filesystem root
+            break;
+        }
+        $dir = $parentDir;
+    }
+}
+
+if ($autoloadPath === null || !file_exists($autoloadPath)) {
+    fwrite(STDERR, "Error: Could not find vendor/autoload.php. Make sure you run 'composer install'.\n");
+    exit(1);
+}
+
+require $autoloadPath;
+
+$application = new Application()->run();

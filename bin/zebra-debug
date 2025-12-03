@@ -1,0 +1,34 @@
+#!/bin/bash
+# Debug wrapper for zebra command
+# Sets Xdebug environment variables and ini settings before PHP starts
+# Always uses local source (bin/zebra), not PHAR
+
+export XDEBUG_MODE=debug
+export XDEBUG_SESSION_START=1
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Always use local source PHP file for debugging
+if [ ! -f "$SCRIPT_DIR/zebra" ]; then
+    echo "Error: Could not find bin/zebra" >&2
+    exit 1
+fi
+
+TRACK_CMD="$SCRIPT_DIR/zebra"
+
+# Run the zebra command with Xdebug ini settings overridden
+# -d xdebug.mode=debug: Force debug mode (overrides ini setting)
+# -d xdebug.start_with_request=yes: Start debug session for CLI
+# -d xdebug.client_host=localhost: Connect to localhost
+# -d xdebug.client_port=9003: Connect on port 9003
+# -d xdebug.connect_timeout_ms=200: Connection timeout (default)
+# -d xdebug.log=/tmp/xdebug.log: Enable Xdebug logging (for troubleshooting)
+exec php \
+    -d xdebug.mode=debug \
+    -d xdebug.start_with_request=yes \
+    -d xdebug.client_host=localhost \
+    -d xdebug.client_port=9003 \
+    -d xdebug.connect_timeout_ms=200 \
+    "$TRACK_CMD" "$@"
+

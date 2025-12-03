@@ -1,0 +1,8 @@
+/vendor/
+.idea/
+.env
+/build/*
+.phpunit.cache/
+.ddev/
+/coverage/
+clover.xml

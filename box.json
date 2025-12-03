@@ -1,0 +1,33 @@
+{
+    "alias": "zebra",
+    "main": "bin/zebra",
+    "output": "build/zebra",
+    "directories": [
+        "src"
+    ],
+    "files": [
+        "bin/zebra"
+    ],
+    "finder": [
+        {
+            "in": "vendor",
+            "exclude": [
+                "Tests",
+                "tests",
+                "docs",
+                "examples",
+                "humbug/php-scoper"
+            ]
+        }
+    ],
+    "blacklist": [
+        "vendor/humbug/php-scoper"
+    ],
+    "compression": "GZ",
+    "banner": [
+        "Time Tracker CLI Tool",
+        ""
+    ],
+    "exclude-composer-files": false,
+    "force-autodiscovery": true
+}

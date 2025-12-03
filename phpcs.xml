@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<ruleset name="Timetracker">
+    <description>PHP CodeSniffer configuration for Timetracker project</description>
+    
+    <!-- Check all files in src and tests directories -->
+    <file>src</file>
+    <file>tests</file>
+    
+    <!-- Use PSR-12 standard -->
+    <rule ref="PSR12"/>
+    
+    <!-- Include Slevomat Coding Standard for unused imports detection -->
+    <!-- Only enable the unused use statement sniff -->
+    <rule ref="SlevomatCodingStandard.Namespaces.UnusedUses">
+        <properties>
+            <property name="searchAnnotations" value="true"/>
+        </properties>
+    </rule>
+    
+    <!-- Exclude PSR-2 property declaration sniffs that don't understand PHP 8.1+ property accessors -->
+    <!-- Property accessors (get { } blocks) are valid PHP 8.1+ syntax but these sniffs flag them incorrectly -->
+    <rule ref="PSR2.Classes.PropertyDeclaration.Multiple">
+        <severity>0</severity>
+    </rule>
+    <rule ref="PSR2.Classes.PropertyDeclaration.ScopeMissing">
+        <severity>0</severity>
+    </rule>
+    
+    <!-- Exclude vendor directory and build artifacts -->
+    <exclude-pattern>vendor/</exclude-pattern>
+    <exclude-pattern>build/</exclude-pattern>
+    <exclude-pattern>src/test.php</exclude-pattern>
+    
+    <!-- Show progress -->
+    <arg name="colors"/>
+    
+    <!-- Show sniff codes in all reports -->
+    <arg value="s"/>
+    
+    <!-- Show sniff codes in error reports -->
+    <arg value="p"/>
+</ruleset>

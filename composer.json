@@ -1,0 +1,77 @@
+{
+    "name": "tcrawf/time-tracker",
+    "description": "A time tracking CLI tool.",
+    "type": "project",
+    "license": "GPL-3.0",
+    "autoload": {
+        "psr-4": {
+            "Tcrawf\\Zebra\\": "src/"
+        },
+        "files": [
+            "src/bootstrap.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tcrawf\\Zebra\\Tests\\": "tests/"
+        }
+    },
+    "bin": [
+        "bin/zebra"
+    ],
+    "authors": [
+        {
+            "name": "Trent Crawford",
+            "email": "trent.crawford@liip.ch"
+        }
+    ],
+    "require": {
+        "php": "^8.4",
+        "nesbot/carbon": "^2.0",
+        "guzzlehttp/guzzle": "^7.10",
+        "vlucas/phpdotenv": "^5.6",
+        "symfony/console": "^7.0"
+    },
+    "require-dev": {
+        "squizlabs/php_codesniffer": "^4.0.1",
+        "slevomat/coding-standard": "^8.24",
+        "roave/security-advisories": "dev-latest",
+        "humbug/box": "^4.6",
+        "phpunit/phpunit": "^11.0",
+        "mikey179/vfsstream": "^2.0@dev",
+        "phpstan/phpstan": "^2.0",
+        "ext-pcov": "*"
+    },
+    "suggest": {
+        "ext-xdebug": "Alternative to ext-pcov for code coverage generation (ext-pcov is recommended for performance)"
+    },
+    "scripts": {
+        "phpcs": "phpcs",
+        "phpcbf": "phpcbf",
+        "phpcs-check": "phpcs",
+        "phpcbf-fix": "phpcbf",
+        "phpstan": "phpstan analyse",
+        "phpstan-baseline": "phpstan analyse --generate-baseline",
+        "test": "phpunit",
+        "test-coverage-check": "@php -r \"if (!extension_loaded('pcov') && !extension_loaded('xdebug') && !extension_loaded('phpdbg')) { echo '\\n⚠️  No code coverage driver found!\\n'; echo 'Install PCOV (recommended): sudo apt-get install php-pcov\\n'; echo 'Or install Xdebug: sudo apt-get install php-xdebug\\n\\n'; exit(1); }\"",
+        "test-coverage": [
+            "@test-coverage-check",
+            "phpunit --coverage-html coverage --coverage-clover clover.xml --coverage-text"
+        ],
+        "test-coverage-text": [
+            "@test-coverage-check",
+            "phpunit --coverage-text"
+        ],
+        "test-coverage-clover": [
+            "@test-coverage-check",
+            "phpunit --coverage-clover clover.xml"
+        ],
+        "build": "box compile",
+        "build-phar": "box compile"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    }
+}
