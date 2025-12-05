@@ -207,16 +207,26 @@ class TimesheetFromFramesCommand extends Command
                 continue;
             }
 
-            // Convert time from seconds to hours, rounded UP to nearest 0.25 (15 minutes)
+            // Convert time from seconds to hours, rounded to nearest 0.25 (15 minutes)
             $timeSeconds = $groupData['time'];
             $timeHoursRaw = $timeSeconds / 3600;
 
-            // Round up to nearest 0.25 hours (15 minutes)
-            // If time is 0, round up to 0.25 (minimum billable time)
-            if ($timeHoursRaw <= 0) {
-                $timeHours = 0.25;
+            // Rounding logic:
+            // - Times <= 0.25h: round up to 0.25h (minimum billable time)
+            // - Times > 0.25h: round to nearest 0.25h (standard rounding)
+            // - Times > 0.25h with activity alias starting with underscore: round DOWN to nearest 0.25h
+            if ($timeHoursRaw <= 0.25) {
+                $timeHours = 0.25; // Minimum billable time
             } else {
-                $timeHours = ceil($timeHoursRaw / 0.25) * 0.25;
+                // Check if activity alias starts with underscore
+                $alias = $activityObj->alias ?? '';
+                if (str_starts_with($alias, '_')) {
+                    // Round down to nearest 0.25h
+                    $timeHours = floor($timeHoursRaw / 0.25) * 0.25;
+                } else {
+                    // Round to nearest 0.25h (standard rounding)
+                    $timeHours = round($timeHoursRaw * 4) / 4;
+                }
             }
 
             // Collect and deduplicate descriptions
