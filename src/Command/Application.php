@@ -43,6 +43,7 @@ use Tcrawf\Zebra\Track\Track;
 use Tcrawf\Zebra\User\UserApiService;
 use Tcrawf\Zebra\User\UserApiServiceInterface;
 use Tcrawf\Zebra\User\UserRepository;
+use Tcrawf\Zebra\Version;
 
 class Application extends SymfonyApplication
 {
@@ -70,7 +71,7 @@ class Application extends SymfonyApplication
 
     public function __construct()
     {
-        parent::__construct('zebra', '1.0.6-alpha');
+        parent::__construct('zebra', Version::getVersion());
 
         // Initialize services directly in constructor for readonly properties
         $this->configStorage = new ConfigFileStorage();

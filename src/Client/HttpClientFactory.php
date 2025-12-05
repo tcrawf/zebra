@@ -6,6 +6,7 @@ namespace Tcrawf\Zebra\Client;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\ClientInterface;
+use Tcrawf\Zebra\Version;
 
 final class HttpClientFactory
 {
@@ -31,6 +32,7 @@ final class HttpClientFactory
 
         $headers = [
             'Accept' => 'application/json',
+            'User-Agent' => 'App zebra-cli(' . Version::getVersion() . ')',
         ];
 
         if ($token === false || $token === '') {

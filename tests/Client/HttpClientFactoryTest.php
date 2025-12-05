@@ -9,6 +9,7 @@ use GuzzleHttp\ClientInterface;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use Tcrawf\Zebra\Client\HttpClientFactory;
+use Tcrawf\Zebra\Version;
 
 class HttpClientFactoryTest extends TestCase
 {
@@ -102,6 +103,7 @@ class HttpClientFactoryTest extends TestCase
         $this->assertArrayHasKey('headers', $config);
         $this->assertEquals('application/json', $config['headers']['Accept']);
         $this->assertEquals('Bearer test_token_123', $config['headers']['Authorization']);
+        $this->assertEquals('App zebra-cli(' . Version::getVersion() . ')', $config['headers']['User-Agent']);
     }
 
     public function testCreateWithoutToken(): void
@@ -120,6 +122,7 @@ class HttpClientFactoryTest extends TestCase
         $this->assertArrayHasKey('headers', $config);
         $this->assertEquals('application/json', $config['headers']['Accept']);
         $this->assertArrayNotHasKey('Authorization', $config['headers']);
+        $this->assertEquals('App zebra-cli(' . Version::getVersion() . ')', $config['headers']['User-Agent']);
     }
 
     public function testCreateWithEmptyToken(): void
@@ -138,6 +141,7 @@ class HttpClientFactoryTest extends TestCase
         $this->assertArrayHasKey('headers', $config);
         $this->assertEquals('application/json', $config['headers']['Accept']);
         $this->assertArrayNotHasKey('Authorization', $config['headers']);
+        $this->assertEquals('App zebra-cli(' . Version::getVersion() . ')', $config['headers']['User-Agent']);
     }
 
     public function testCreateWithCustomBaseUri(): void
@@ -156,6 +160,7 @@ class HttpClientFactoryTest extends TestCase
         $this->assertArrayHasKey('headers', $config);
         $this->assertEquals('application/json', $config['headers']['Accept']);
         $this->assertEquals('Bearer test_token_123', $config['headers']['Authorization']);
+        $this->assertEquals('App zebra-cli(' . Version::getVersion() . ')', $config['headers']['User-Agent']);
     }
 
     public function testCreateWithCustomBaseUriWithoutToken(): void
@@ -174,6 +179,7 @@ class HttpClientFactoryTest extends TestCase
         $this->assertArrayHasKey('headers', $config);
         $this->assertEquals('application/json', $config['headers']['Accept']);
         $this->assertArrayNotHasKey('Authorization', $config['headers']);
+        $this->assertEquals('App zebra-cli(' . Version::getVersion() . ')', $config['headers']['User-Agent']);
     }
 
     public function testCreateWithCustomBaseUriWithEmptyToken(): void
@@ -192,6 +198,7 @@ class HttpClientFactoryTest extends TestCase
         $this->assertArrayHasKey('headers', $config);
         $this->assertEquals('application/json', $config['headers']['Accept']);
         $this->assertArrayNotHasKey('Authorization', $config['headers']);
+        $this->assertEquals('App zebra-cli(' . Version::getVersion() . ')', $config['headers']['User-Agent']);
     }
 
     public function testCreateUsesEnvironmentBaseUriWhenNull(): void
@@ -294,6 +301,7 @@ class HttpClientFactoryTest extends TestCase
             $config = $this->getClientConfig($client);
 
             $this->assertEquals('Bearer ' . $token, $config['headers']['Authorization'], "Failed for token: {$token}");
+            $this->assertEquals('App zebra-cli(' . Version::getVersion() . ')', $config['headers']['User-Agent']);
         }
     }
 
@@ -321,6 +329,7 @@ class HttpClientFactoryTest extends TestCase
         // Verify configuration is correct (base_uri should be empty string)
         $config = $this->getClientConfig($client);
         $this->assertEquals('', $config['base_uri']);
+        $this->assertEquals('App zebra-cli(' . Version::getVersion() . ')', $config['headers']['User-Agent']);
     }
 
     public function testCreateWritesWarningWhenBaseUriEmptyAndPhpunitNotRunning(): void
@@ -345,6 +354,7 @@ class HttpClientFactoryTest extends TestCase
         // Verify configuration is correct even when warning is written
         $config = $this->getClientConfig($client);
         $this->assertEquals('', $config['base_uri']);
+        $this->assertEquals('App zebra-cli(' . Version::getVersion() . ')', $config['headers']['User-Agent']);
     }
 
     public function testCreateDoesNotWriteWarningWhenBaseUriSetAndPhpunitRunning(): void
@@ -369,6 +379,7 @@ class HttpClientFactoryTest extends TestCase
         // Verify base_uri is set correctly
         $config = $this->getClientConfig($client);
         $this->assertEquals('https://test.example.com', $config['base_uri']);
+        $this->assertEquals('App zebra-cli(' . Version::getVersion() . ')', $config['headers']['User-Agent']);
     }
 
     public function testCreateWithCustomBaseUriOverridesEnvironment(): void
@@ -389,5 +400,22 @@ class HttpClientFactoryTest extends TestCase
         $config = $this->getClientConfig($client);
         // Custom URI should override environment variable
         $this->assertEquals($customUri, $config['base_uri']);
+        $this->assertEquals('App zebra-cli(' . Version::getVersion() . ')', $config['headers']['User-Agent']);
+    }
+
+    public function testCreateSetsUserAgentHeader(): void
+    {
+        putenv('ZEBRA_TOKEN=test_token_123');
+        $_SERVER['ZEBRA_TOKEN'] = 'test_token_123';
+        $_ENV['ZEBRA_TOKEN'] = 'test_token_123';
+
+        $client = HttpClientFactory::create();
+
+        $this->assertInstanceOf(ClientInterface::class, $client);
+
+        $config = $this->getClientConfig($client);
+        $this->assertArrayHasKey('headers', $config);
+        $this->assertArrayHasKey('User-Agent', $config['headers']);
+        $this->assertEquals('App zebra-cli(' . Version::getVersion() . ')', $config['headers']['User-Agent']);
     }
 }
