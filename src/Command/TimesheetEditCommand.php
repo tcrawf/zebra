@@ -584,11 +584,8 @@ class TimesheetEditCommand extends Command
             return null;
         }
 
-        $tmpFile = tempnam(sys_get_temp_dir(), 'zebra_timesheet_edit_');
-        if ($tmpFile === false) {
-            return null;
-        }
-
+        // Create temp file with .json extension so nano can detect syntax highlighting
+        $tmpFile = sys_get_temp_dir() . '/zebra_timesheet_edit_' . uniqid('', true) . '.json';
         file_put_contents($tmpFile, $content);
 
         // Open editor using proc_open for better control over process handling
@@ -613,6 +610,7 @@ class TimesheetEditCommand extends Command
         }
 
         // Use array syntax for proc_open - safer than string command
+        // Environment variables are inherited automatically, so TERM will be available if set
         $process = @proc_open([$validatedEditor, $tmpFile], $descriptorspec, $pipes);
 
         if (!is_resource($process)) {

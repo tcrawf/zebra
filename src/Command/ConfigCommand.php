@@ -376,6 +376,7 @@ class ConfigCommand extends Command
                 ];
             }
 
+            // Environment variables are inherited automatically, so TERM will be available if set
             $process = @proc_open([$validatedEditor, $filePath], $descriptorspec, $pipes);
             if (!is_resource($process)) {
                 return null;
@@ -409,12 +410,8 @@ class ConfigCommand extends Command
             return file_get_contents($filePath);
         }
 
-        // Use temp file
-        $tmpFile = tempnam(sys_get_temp_dir(), 'zebra_config_');
-        if ($tmpFile === false) {
-            return null;
-        }
-
+        // Use temp file with .json extension so nano can detect syntax highlighting
+        $tmpFile = sys_get_temp_dir() . '/zebra_config_' . uniqid('', true) . '.json';
         file_put_contents($tmpFile, $content);
 
         // Open editor using proc_open with array syntax
@@ -435,6 +432,7 @@ class ConfigCommand extends Command
             ];
         }
 
+        // Environment variables are inherited automatically, so TERM will be available if set
         $process = @proc_open([$validatedEditor, $tmpFile], $descriptorspec, $pipes);
         if (!is_resource($process)) {
             unlink($tmpFile);
