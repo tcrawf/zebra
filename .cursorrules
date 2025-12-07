@@ -60,7 +60,7 @@ This is a PHP 8.4 CLI time tracking application using strict types, PSR-12 codin
   - API service interface and implementation (if applicable)
 
 ## When Writing Code
-- Ensure always one new line at the end of the file and no more. This includes the last line of the file.
+- Do not add newlines at the end of the file.
 - Always follow PSR-12 formatting
 - Use strict types declaration
 - **Automatically write tests for new functionality** - don't wait to be asked
