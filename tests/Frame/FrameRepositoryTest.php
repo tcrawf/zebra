@@ -655,6 +655,257 @@ class FrameRepositoryTest extends RepositoryTestCase
         $this->assertEquals('Tester', $result->name);
     }
 
+    public function testGetLastActivityForIssueKeys(): void
+    {
+        $activity1 = TestEntityFactory::createActivity(EntityKey::zebra(1), 'Activity 1', '', EntityKey::zebra(100));
+        $activity2 = TestEntityFactory::createActivity(EntityKey::zebra(2), 'Activity 2', '', EntityKey::zebra(100));
+        $role = TestEntityFactory::createRole(1, null, 'Developer');
+
+        $uuid1 = Uuid::random();
+        $uuid2 = Uuid::random();
+        $start1 = Carbon::now()->subDays(2);
+        $start2 = Carbon::now()->subHour();
+
+        // Frame with ABC-123 and DEF-456
+        $frame1 = TestEntityFactory::createFrame(
+            $uuid1,
+            $start1,
+            $start1->copy()->addHour(),
+            $activity1,
+            false,
+            $role,
+            'ABC-123 DEF-456'
+        );
+        // More recent frame with same issue keys (different order)
+        $frame2 = TestEntityFactory::createFrame(
+            $uuid2,
+            $start2,
+            $start2->copy()->addHour(),
+            $activity2,
+            false,
+            $role,
+            'DEF-456 ABC-123'
+        );
+
+        $this->storage
+            ->expects($this->once())
+            ->method('read')
+            ->willReturn([
+                $uuid1->getHex() => $frame1->toArray(),
+                $uuid2->getHex() => $frame2->toArray()
+            ]);
+
+        $result = $this->repository->getLastActivityForIssueKeys(['ABC-123', 'DEF-456']);
+
+        $this->assertNotNull($result);
+        $this->assertEquals($activity2->entityKey->toString(), $result->entityKey->toString());
+        $this->assertEquals('Activity 2', $result->name);
+    }
+
+    public function testGetLastActivityForIssueKeysReturnsNullWhenNoFrames(): void
+    {
+        $this->storage
+            ->expects($this->once())
+            ->method('read')
+            ->willReturn([]);
+
+        $result = $this->repository->getLastActivityForIssueKeys(['ABC-123', 'DEF-456']);
+
+        $this->assertNull($result);
+    }
+
+    public function testGetLastActivityForIssueKeysReturnsNullWhenEmptyIssueKeys(): void
+    {
+        $this->storage
+            ->expects($this->never())
+            ->method('read');
+
+        $result = $this->repository->getLastActivityForIssueKeys([]);
+
+        $this->assertNull($result);
+    }
+
+    public function testGetLastActivityForIssueKeysIgnoresActiveFrames(): void
+    {
+        $activity1 = TestEntityFactory::createActivity(EntityKey::zebra(1), 'Activity 1', '', EntityKey::zebra(100));
+        $activity2 = TestEntityFactory::createActivity(EntityKey::zebra(2), 'Activity 2', '', EntityKey::zebra(100));
+        $role = TestEntityFactory::createRole(1, null, 'Developer');
+
+        $uuid1 = Uuid::random();
+        $uuid2 = Uuid::random();
+        $start1 = Carbon::now()->subDays(2);
+        $start2 = Carbon::now()->subHour();
+
+        // Completed frame with ABC-123
+        $frame1 = TestEntityFactory::createFrame(
+            $uuid1,
+            $start1,
+            $start1->copy()->addHour(),
+            $activity1,
+            false,
+            $role,
+            'ABC-123'
+        );
+        // Active frame with ABC-123 (should be ignored)
+        $frame2 = TestEntityFactory::createActiveFrame($uuid2, $start2, $activity2, false, $role, 'ABC-123');
+
+        $this->storage
+            ->expects($this->once())
+            ->method('read')
+            ->willReturn([
+                $uuid1->getHex() => $frame1->toArray(),
+                $uuid2->getHex() => $frame2->toArray()
+            ]);
+
+        $result = $this->repository->getLastActivityForIssueKeys(['ABC-123']);
+
+        $this->assertNotNull($result);
+        $this->assertEquals($activity1->entityKey->toString(), $result->entityKey->toString());
+        $this->assertEquals('Activity 1', $result->name);
+    }
+
+    public function testGetLastActivityForIssueKeysReturnsMostRecent(): void
+    {
+        $activity1 = TestEntityFactory::createActivity(EntityKey::zebra(1), 'Activity 1', '', EntityKey::zebra(100));
+        $activity2 = TestEntityFactory::createActivity(EntityKey::zebra(2), 'Activity 2', '', EntityKey::zebra(100));
+        $activity3 = TestEntityFactory::createActivity(EntityKey::zebra(3), 'Activity 3', '', EntityKey::zebra(100));
+        $role = TestEntityFactory::createRole(1, null, 'Developer');
+
+        $uuid1 = Uuid::random();
+        $uuid2 = Uuid::random();
+        $uuid3 = Uuid::random();
+        $start1 = Carbon::now()->subDays(3);
+        $start2 = Carbon::now()->subDays(2);
+        $start3 = Carbon::now()->subHour();
+
+        // Oldest frame
+        $frame1 = TestEntityFactory::createFrame(
+            $uuid1,
+            $start1,
+            $start1->copy()->addHour(),
+            $activity1,
+            false,
+            $role,
+            'ABC-123'
+        );
+        // Middle frame
+        $frame2 = TestEntityFactory::createFrame(
+            $uuid2,
+            $start2,
+            $start2->copy()->addHour(),
+            $activity2,
+            false,
+            $role,
+            'ABC-123'
+        );
+        // Most recent frame
+        $frame3 = TestEntityFactory::createFrame(
+            $uuid3,
+            $start3,
+            $start3->copy()->addHour(),
+            $activity3,
+            false,
+            $role,
+            'ABC-123'
+        );
+
+        $this->storage
+            ->expects($this->once())
+            ->method('read')
+            ->willReturn([
+                $uuid1->getHex() => $frame1->toArray(),
+                $uuid2->getHex() => $frame2->toArray(),
+                $uuid3->getHex() => $frame3->toArray()
+            ]);
+
+        $result = $this->repository->getLastActivityForIssueKeys(['ABC-123']);
+
+        $this->assertNotNull($result);
+        $this->assertEquals($activity3->entityKey->toString(), $result->entityKey->toString());
+        $this->assertEquals('Activity 3', $result->name);
+    }
+
+    public function testGetLastActivityForIssueKeysIgnoresFramesWithNoIssueKeys(): void
+    {
+        $activity1 = TestEntityFactory::createActivity(EntityKey::zebra(1), 'Activity 1', '', EntityKey::zebra(100));
+        $activity2 = TestEntityFactory::createActivity(EntityKey::zebra(2), 'Activity 2', '', EntityKey::zebra(100));
+        $role = TestEntityFactory::createRole(1, null, 'Developer');
+
+        $uuid1 = Uuid::random();
+        $uuid2 = Uuid::random();
+        $start1 = Carbon::now()->subDays(2);
+        $start2 = Carbon::now()->subHour();
+
+        // Frame with no issue keys
+        $frame1 = TestEntityFactory::createFrame(
+            $uuid1,
+            $start1,
+            $start1->copy()->addHour(),
+            $activity1,
+            false,
+            $role,
+            'No issue keys'
+        );
+        // Frame with ABC-123
+        $frame2 = TestEntityFactory::createFrame(
+            $uuid2,
+            $start2,
+            $start2->copy()->addHour(),
+            $activity2,
+            false,
+            $role,
+            'ABC-123'
+        );
+
+        $this->storage
+            ->expects($this->once())
+            ->method('read')
+            ->willReturn([
+                $uuid1->getHex() => $frame1->toArray(),
+                $uuid2->getHex() => $frame2->toArray()
+            ]);
+
+        $result = $this->repository->getLastActivityForIssueKeys(['ABC-123']);
+
+        $this->assertNotNull($result);
+        $this->assertEquals($activity2->entityKey->toString(), $result->entityKey->toString());
+        $this->assertEquals('Activity 2', $result->name);
+    }
+
+    public function testGetLastActivityForIssueKeysMatchesOrderIndependent(): void
+    {
+        $activity1 = TestEntityFactory::createActivity(EntityKey::zebra(1), 'Activity 1', '', EntityKey::zebra(100));
+        $role = TestEntityFactory::createRole(1, null, 'Developer');
+
+        $uuid1 = Uuid::random();
+        $start1 = Carbon::now()->subHour();
+
+        // Frame with ABC-123 and DEF-456
+        $frame1 = TestEntityFactory::createFrame(
+            $uuid1,
+            $start1,
+            $start1->copy()->addHour(),
+            $activity1,
+            false,
+            $role,
+            'ABC-123 DEF-456'
+        );
+
+        $this->storage
+            ->expects($this->once())
+            ->method('read')
+            ->willReturn([
+                $uuid1->getHex() => $frame1->toArray()
+            ]);
+
+        // Search with different order
+        $result = $this->repository->getLastActivityForIssueKeys(['DEF-456', 'ABC-123']);
+
+        $this->assertNotNull($result);
+        $this->assertEquals($activity1->entityKey->toString(), $result->entityKey->toString());
+        $this->assertEquals('Activity 1', $result->name);
+    }
+
     public function testUpdate(): void
     {
         $uuid = Uuid::random();

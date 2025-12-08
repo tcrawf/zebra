@@ -134,4 +134,14 @@ interface FrameRepositoryInterface
      * @return RoleInterface|null The last used role, or null if no frames exist for the activity
      */
     public function getLastUsedRoleForActivity(ActivityInterface $activity): ?RoleInterface;
+
+    /**
+     * Get the last activity used for a given combination of issue keys.
+     * Returns the activity from the most recent completed frame (not active) with the exact same issue keys.
+     * Issue key order is ignored when matching (e.g., ['ABC-123', 'DEF-456'] matches ['DEF-456', 'ABC-123']).
+     *
+     * @param array<string> $issueKeys The issue keys to find the last activity for
+     * @return ActivityInterface|null The last activity, or null if no frames exist with these issue keys
+     */
+    public function getLastActivityForIssueKeys(array $issueKeys): ?ActivityInterface;
 }
