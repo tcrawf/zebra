@@ -157,6 +157,20 @@ class LogCommandTest extends TestCase
         $this->assertEquals(0, $this->commandTester->getStatusCode());
     }
 
+    public function testExecuteWithYesterdayOption(): void
+    {
+        $this->frameRepository
+            ->method('filter')
+            ->willReturn([]);
+        $this->frameRepository
+            ->method('getCurrent')
+            ->willReturn(null);
+
+        $this->commandTester->execute(['--yesterday' => true]);
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+    }
+
     public function testExecuteWithFromToOptions(): void
     {
         $from = Carbon::now()->subDays(7)->startOfDay()->utc();

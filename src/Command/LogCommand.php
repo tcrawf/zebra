@@ -53,6 +53,7 @@ class LogCommand extends Command
             ->addOption('from', 'f', InputOption::VALUE_OPTIONAL, 'Start date (ISO 8601 format)', null)
             ->addOption('to', 't', InputOption::VALUE_OPTIONAL, 'End date (ISO 8601 format)', null)
             ->addOption('day', 'd', InputOption::VALUE_NONE, 'Current day')
+            ->addOption('yesterday', null, InputOption::VALUE_NONE, 'Display frames for yesterday')
             ->addOption('week', 'w', InputOption::VALUE_NONE, 'Current week')
             ->addOption('month', 'm', InputOption::VALUE_NONE, 'Current month')
             ->addOption('year', 'y', InputOption::VALUE_NONE, 'Current year')
