@@ -47,6 +47,12 @@ class TimesheetFromFramesCommand extends Command
                 null
             )
             ->addOption(
+                'yesterday',
+                null,
+                InputOption::VALUE_NONE,
+                'Create timesheets for yesterday'
+            )
+            ->addOption(
                 'dry-run',
                 null,
                 InputOption::VALUE_NONE,

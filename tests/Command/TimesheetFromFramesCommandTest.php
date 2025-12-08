@@ -584,4 +584,84 @@ class TimesheetFromFramesCommandTest extends TestCase
         // Verify that no update occurred (all frames already exist)
         $this->assertStringNotContainsString('Updated timesheet', $display);
     }
+
+    public function testExecuteWithYesterdayOption(): void
+    {
+        $yesterday = Carbon::yesterday();
+        $frameUuid1 = Uuid::random();
+
+        // Create frame
+        $frame1 = new Frame(
+            $frameUuid1,
+            $yesterday->copy()->setTime(10, 0),
+            $yesterday->copy()->setTime(11, 0),
+            $this->activity1,
+            false,
+            $this->role,
+            'PROJ-123: Working on issue'
+        );
+
+        // Mock frame repository filter to return frames
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('filter')
+            ->with(
+                [],
+                [],
+                [],
+                [],
+                $this->anything(),
+                $this->anything(),
+                true
+            )
+            ->willReturn([$frame1]);
+
+        // Mock report service
+        $this->reportService
+            ->expects($this->once())
+            ->method('generateReportByIssueKey')
+            ->willReturn([
+                'time' => 3600, // 1 hour
+                'timespan' => [
+                    'from' => $yesterday->copy()->startOfDay(),
+                    'to' => $yesterday->copy()->endOfDay(),
+                ],
+                'issueKeys' => [
+                    [
+                        'issueKeys' => ['PROJ-123'],
+                        'time' => 3600,
+                        'activity' => [
+                            'entityKey' => [
+                                'source' => 'zebra',
+                                'id' => 123,
+                            ],
+                            'name' => 'Test Activity 1',
+                        ],
+                    ],
+                ],
+                'frames' => [$frame1],
+            ]);
+
+        // Mock timesheet repository to return no existing timesheets
+        $this->timesheetRepository
+            ->expects($this->once())
+            ->method('getByDateRange')
+            ->with($yesterday, $yesterday)
+            ->willReturn([]);
+
+        // Should save new timesheet
+        $this->timesheetRepository
+            ->expects($this->once())
+            ->method('save')
+            ->with($this->callback(function ($timesheet) use ($frameUuid1, $yesterday) {
+                return in_array($frameUuid1->getHex(), $timesheet->frameUuids, true)
+                    && $timesheet->date->format('Y-m-d') === $yesterday->format('Y-m-d');
+            }));
+
+        $this->commandTester->execute(['--yesterday' => true]);
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        $display = $this->commandTester->getDisplay();
+        $this->assertStringContainsString('Created', $display);
+    }
 }
