@@ -79,17 +79,45 @@ class AddCommand extends Command
         $activityIdentifier = $parsed['activity'];
         $descriptionFromPlus = $parsed['description'];
 
-        // If no activity found, show error
+        // Use description from + syntax if provided, otherwise use option
+        $description = $descriptionFromPlus ?? $input->getOption('description');
+
+        // If no activity found, try to find last activity for issue keys in description
+        $activity = null;
         if ($activityIdentifier === null) {
-            $io->writeln('<fg=red>Activity is required</fg=red>');
-            return Command::FAILURE;
+            $issueKeys = $this->extractIssueKeys($description ?? '');
+            if (!empty($issueKeys)) {
+                $activity = $this->frameRepository->getLastActivityForIssueKeys($issueKeys);
+                if ($activity !== null) {
+                    // Found last activity for these issue keys, use it automatically
+                    // No need to resolve further
+                }
+            }
+
+            // If still no activity found, show search/menu
+            if ($activity === null) {
+                // Prompt user to search for activity (only in interactive mode)
+                if ($input->isInteractive()) {
+                    $searchTerm = $io->ask('No activity specified. Search for activity', '');
+                    if (empty($searchTerm)) {
+                        $io->writeln('<fg=red>Activity is required</fg=red>');
+                        return Command::FAILURE;
+                    }
+                    $activityIdentifier = $searchTerm;
+                } else {
+                    $io->writeln('<fg=red>Activity is required</fg=red>');
+                    return Command::FAILURE;
+                }
+            }
         }
 
-        $activity = $this->resolveActivity($activityIdentifier, $io);
-
+        // Resolve activity if we don't have one yet (either from identifier or from last activity lookup)
         if ($activity === null) {
-            $io->writeln("<fg=red>Activity '{$activityIdentifier}' not found</fg=red>");
-            return Command::FAILURE;
+            $activity = $this->resolveActivity($activityIdentifier, $io);
+            if ($activity === null) {
+                $io->writeln("<fg=red>Activity '{$activityIdentifier}' not found</fg=red>");
+                return Command::FAILURE;
+            }
         }
 
         $fromStr = $input->getOption('from');
@@ -103,8 +131,6 @@ class AddCommand extends Command
         try {
             $from = Carbon::parse($fromStr);
             $to = Carbon::parse($toStr);
-            // Use description from + syntax if provided, otherwise use option
-            $description = $descriptionFromPlus ?? $input->getOption('description');
             $isIndividual = $input->getOption('individual') === true;
 
             $role = $isIndividual ? null : $this->resolveRole($input, $io, $activity);
@@ -199,6 +225,29 @@ class AddCommand extends Command
     protected function getConfigStorage(): ConfigFileStorageInterface
     {
         return $this->configStorage;
+    }
+
+    /**
+     * Extract issue keys from description.
+     * Issue keys have the format: 2-6 uppercase letters, hyphen, 1-5 digits (e.g., AA-1234, ABC-12345).
+     * Uses the same pattern as Frame::extractIssues().
+     *
+     * @param string $description The description to extract issue keys from
+     * @return array<string> Array of issue keys found in the description
+     */
+    private function extractIssueKeys(string $description): array
+    {
+        if (empty($description)) {
+            return [];
+        }
+
+        // Pattern: 2-6 uppercase letters, hyphen, 1-5 digits
+        $pattern = '/[A-Z]{2,6}-\d{1,5}/';
+        preg_match_all($pattern, $description, $matches);
+
+        // Return unique issue keys
+        // preg_match_all always populates $matches[0], even if empty
+        return array_values(array_unique($matches[0]));
     }
 
     public function complete(CompletionInput $input, CompletionSuggestions $suggestions): void

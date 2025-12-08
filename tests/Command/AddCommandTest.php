@@ -444,4 +444,76 @@ class AddCommandTest extends TestCase
         $this->assertEquals(1, $this->commandTester->getStatusCode());
         $this->assertStringContainsString('Invalid time range', $this->commandTester->getDisplay());
     }
+
+    public function testAddWithNoActivityButIssueKeysFoundUsesLastActivity(): void
+    {
+        $from = Carbon::now()->subHours(2);
+        $to = Carbon::now()->subHour();
+        $frame = new Frame(
+            Uuid::random(),
+            $from,
+            $to,
+            $this->activity,
+            false,
+            $this->role,
+            'ABC-123 DEF-456'
+        );
+
+        // No activity provided, but issue keys in description
+        // Should find last activity for these issue keys
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getLastActivityForIssueKeys')
+            ->with(['ABC-123', 'DEF-456'])
+            ->willReturn($this->activity);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getLastUsedRoleForActivity')
+            ->with($this->activity)
+            ->willReturn(null);
+
+        $this->userRepository
+            ->expects($this->once())
+            ->method('getCurrentUserDefaultRole')
+            ->willReturn($this->role);
+
+        $this->track
+            ->expects($this->once())
+            ->method('add')
+            ->with(
+                $this->activity,
+                $this->callback(function ($fromParam) use ($from) {
+                    return $fromParam instanceof \Carbon\Carbon
+                        && $fromParam->timestamp === $from->timestamp;
+                }),
+                $this->callback(function ($toParam) use ($to) {
+                    return $toParam instanceof \Carbon\Carbon
+                        && $toParam->timestamp === $to->timestamp;
+                }),
+                'ABC-123 DEF-456',
+                false,
+                $this->role
+            )
+            ->willReturn($frame);
+
+        // Execute with only description containing issue keys, no activity
+        // Set interactive=false to avoid prompt issues in tests
+        $this->commandTester->execute(
+            [
+                'activity' => ['+ABC-123', 'DEF-456'],
+                '--from' => $from->toIso8601String(),
+                '--to' => $to->toIso8601String()
+            ],
+            ['interactive' => false]
+        );
+
+        $display = $this->commandTester->getDisplay();
+        $statusCode = $this->commandTester->getStatusCode();
+        if ($statusCode !== 0) {
+            $this->fail("Command failed with status code {$statusCode}. Output: {$display}");
+        }
+        $this->assertEquals(0, $statusCode);
+        $this->assertStringContainsString('Frame added successfully', $display);
+    }
 }

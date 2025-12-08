@@ -593,4 +593,69 @@ class StartCommandTest extends TestCase
         $this->assertStringContainsString('Activity=' . $existingFrame->activity->name, $display);
         $this->assertStringContainsString('Role=' . $existingFrame->role->name, $display);
     }
+
+    public function testStartWithNoActivityButIssueKeysFoundUsesLastActivity(): void
+    {
+        $frame = new Frame(
+            Uuid::random(),
+            Carbon::now(),
+            null,
+            $this->activity,
+            false,
+            $this->role,
+            'ABC-123 DEF-456'
+        );
+
+        // No activity provided, but issue keys in description
+        // Should find last activity for these issue keys
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getLastActivityForIssueKeys')
+            ->with(['ABC-123', 'DEF-456'])
+            ->willReturn($this->activity);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getLastUsedRoleForActivity')
+            ->with($this->activity)
+            ->willReturn(null);
+
+        $this->userRepository
+            ->expects($this->once())
+            ->method('getCurrentUserDefaultRole')
+            ->willReturn($this->role);
+
+        $this->track
+            ->expects($this->once())
+            ->method('start')
+            ->with($this->activity, 'ABC-123 DEF-456', null, true, false, $this->role)
+            ->willReturn($frame);
+
+        // Execute with only description containing issue keys, no activity
+        $this->commandTester->execute([
+            'activity' => ['+ABC-123', 'DEF-456']
+        ]);
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('Frame started successfully', $this->commandTester->getDisplay());
+    }
+
+    public function testStartWithNoActivityButNoIssueKeysInDescription(): void
+    {
+        // No activity provided and no issue keys in description
+        // getLastActivityForIssueKeys should NOT be called when there are no issue keys
+        $this->frameRepository
+            ->expects($this->never())
+            ->method('getLastActivityForIssueKeys');
+
+        // Since CommandTester doesn't support interactive prompts well,
+        // we'll test that it fails when no search term is provided
+        // In real usage, the user would provide a search term via the prompt
+        $this->commandTester->execute([
+            'activity' => ['+Some description without issue keys']
+        ], ['interactive' => false]);
+
+        // Should fail because no activity was found
+        $this->assertEquals(1, $this->commandTester->getStatusCode());
+    }
 }

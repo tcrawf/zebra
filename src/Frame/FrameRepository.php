@@ -577,4 +577,62 @@ class FrameRepository implements FrameRepositoryInterface
         // Return the role from the most recent frame
         return $activityFrames[0]->role;
     }
+
+    /**
+     * Get the last activity used for a given combination of issue keys.
+     * Returns the activity from the most recent completed frame (not active) with the exact same issue keys.
+     * Issue key order is ignored when matching (e.g., ['ABC-123', 'DEF-456'] matches ['DEF-456', 'ABC-123']).
+     *
+     * @param array<string> $issueKeys The issue keys to find the last activity for
+     * @return ActivityInterface|null The last activity, or null if no frames exist with these issue keys
+     */
+    public function getLastActivityForIssueKeys(array $issueKeys): ?ActivityInterface
+    {
+        if (empty($issueKeys)) {
+            return null;
+        }
+
+        $allFrames = $this->all();
+        $matchingFrames = [];
+
+        // Sort issue keys for comparison (order-independent matching)
+        $sortedIssueKeys = $issueKeys;
+        sort($sortedIssueKeys);
+
+        // Filter frames by matching issue keys, only including completed frames (not active)
+        foreach ($allFrames as $frame) {
+            // Skip active frames
+            if ($frame->isActive()) {
+                continue;
+            }
+
+            $frameIssueKeys = $frame->issueKeys;
+
+            // Skip frames with no issue keys if we're looking for specific issue keys
+            if (empty($frameIssueKeys)) {
+                continue;
+            }
+
+            // Sort frame issue keys for comparison
+            $sortedFrameIssueKeys = $frameIssueKeys;
+            sort($sortedFrameIssueKeys);
+
+            // Check if issue keys match (order-independent)
+            if ($sortedFrameIssueKeys === $sortedIssueKeys) {
+                $matchingFrames[] = $frame;
+            }
+        }
+
+        if (empty($matchingFrames)) {
+            return null;
+        }
+
+        // Sort frames by start time, descending (most recent first)
+        usort($matchingFrames, static function (FrameInterface $a, FrameInterface $b): int {
+            return $b->startTime->timestamp <=> $a->startTime->timestamp;
+        });
+
+        // Return the activity from the most recent frame
+        return $matchingFrames[0]->activity;
+    }
 }
