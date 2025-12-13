@@ -453,7 +453,12 @@ class FrameRepository implements FrameRepositoryInterface
         }
 
         // Create a completed version of the frame
-        $completedFrame = FrameFactory::withStopTime($currentFrame, $stop, $this->activityRepository, $this->userRepository);
+        $completedFrame = FrameFactory::withStopTime(
+            $currentFrame,
+            $stop,
+            $this->activityRepository,
+            $this->userRepository
+        );
 
         // Save the completed frame permanently
         $this->save($completedFrame);

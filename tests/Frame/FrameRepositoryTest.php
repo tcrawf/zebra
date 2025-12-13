@@ -55,7 +55,8 @@ class FrameRepositoryTest extends RepositoryTestCase
                 if ($entityKey->source->value === 'zebra') {
                     // Handle both int and string IDs
                     $activityId = is_int($entityKey->id) ? $entityKey->id : (int) $entityKey->id;
-                    // Use project key based on activity ID pattern: activity 1 -> project 100, activity 2 -> project 200, etc.
+                    // Use project key based on activity ID pattern:
+                    // activity 1 -> project 100, activity 2 -> project 200, etc.
                     // This matches the test pattern where activities have different project IDs
                     $projectId = $activityId * 100;
                     $projectKey = EntityKey::zebra($projectId);
@@ -112,7 +113,12 @@ class FrameRepositoryTest extends RepositoryTestCase
                 return TestEntityFactory::createRole($roleId, null, $name);
             });
 
-        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
+        $this->repository = new FrameRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_frames.json'
+        );
     }
 
     public function testSave(): void
@@ -410,7 +416,12 @@ class FrameRepositoryTest extends RepositoryTestCase
                 return isset($data['uuid']) && $data['uuid'] === $uuid->getHex();
             }));
 
-        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
+        $this->repository = new FrameRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_frames.json'
+        );
         $this->repository->saveCurrent($frame);
     }
 
@@ -461,7 +472,12 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('read')
             ->willReturn($frame->toArray());
 
-        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
+        $this->repository = new FrameRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_frames.json'
+        );
         $result = $this->repository->getCurrent();
 
         $this->assertNotNull($result);
@@ -483,7 +499,12 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('exists')
             ->willReturn(false);
 
-        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
+        $this->repository = new FrameRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_frames.json'
+        );
         $result = $this->repository->getCurrent();
 
         $this->assertNull($result);
@@ -534,7 +555,12 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('write')
             ->with([]);
 
-        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
+        $this->repository = new FrameRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_frames.json'
+        );
         $completed = $this->repository->completeCurrent();
 
         $this->assertFalse($completed->isActive());
@@ -557,7 +583,12 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('exists')
             ->willReturn(false);
 
-        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
+        $this->repository = new FrameRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_frames.json'
+        );
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('No current frame exists to complete');
 
@@ -584,7 +615,12 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('write')
             ->with([]);
 
-        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
+        $this->repository = new FrameRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_frames.json'
+        );
         $this->repository->clearCurrent();
     }
 
@@ -1355,7 +1391,12 @@ class FrameRepositoryTest extends RepositoryTestCase
                 return isset($data['uuid']) && $data['uuid'] === $uuid->getHex();
             }));
 
-        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
+        $this->repository = new FrameRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_frames.json'
+        );
         $this->repository->update($updatedFrame);
     }
 
@@ -1415,7 +1456,12 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('write')
             ->with([]);
 
-        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
+        $this->repository = new FrameRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_frames.json'
+        );
         $this->repository->update($updatedFrame);
     }
 
@@ -1467,7 +1513,12 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('write')
             ->with([]);
 
-        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
+        $this->repository = new FrameRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_frames.json'
+        );
         $this->repository->remove($uuid->getHex());
     }
 
@@ -1478,7 +1529,12 @@ class FrameRepositoryTest extends RepositoryTestCase
         $frame = TestEntityFactory::createActiveFrame($uuid, $futureTime, $this->activity, false, $this->role);
 
         $this->storageFactory = $this->createMock(FrameFileStorageFactoryInterface::class);
-        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
+        $this->repository = new FrameRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_frames.json'
+        );
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Cannot save a frame with a start datetime later than the current time');
 
@@ -1522,7 +1578,12 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('read')
             ->willReturn($existingFrame->toArray());
 
-        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
+        $this->repository = new FrameRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_frames.json'
+        );
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Cannot save a current frame: a different current frame already exists');
 
@@ -1558,7 +1619,12 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('read')
             ->willReturn($currentFrame->toArray());
 
-        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
+        $this->repository = new FrameRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_frames.json'
+        );
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Cannot complete a frame with a stop datetime later than the current time');
 
@@ -1630,7 +1696,12 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('read')
             ->willReturn(['invalid' => 'data']);
 
-        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
+        $this->repository = new FrameRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_frames.json'
+        );
         $result = $this->repository->getCurrent();
 
         $this->assertNull($result);

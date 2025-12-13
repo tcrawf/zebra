@@ -106,7 +106,8 @@ class Frame implements FrameInterface
         ?ActivityRepositoryInterface $activityRepository = null,
         ?UserRepositoryInterface $userRepository = null
     ) {
-        // Handle activity parameter: can be ActivityInterface (for new frames) or EntityKeyInterface (for loaded frames)
+        // Handle activity parameter: can be ActivityInterface (for new frames)
+        // or EntityKeyInterface (for loaded frames)
         if ($activityOrKey instanceof ActivityInterface) {
             $this->activityKey = $activityOrKey->entityKey;
             $this->activityCache = $activityOrKey;

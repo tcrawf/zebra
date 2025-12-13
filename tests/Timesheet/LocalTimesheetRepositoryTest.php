@@ -48,7 +48,7 @@ class LocalTimesheetRepositoryTest extends TestCase
 
         $this->activityRepository = $this->createMock(ActivityRepositoryInterface::class);
         $this->userRepository = $this->createMock(UserRepositoryInterface::class);
-        
+
         // Set up activity repository to return activities by key
         $this->activityRepository->method('get')
             ->willReturnCallback(function ($entityKey) {
@@ -77,7 +77,12 @@ class LocalTimesheetRepositoryTest extends TestCase
                 return null;
             });
 
-        $this->repository = new LocalTimesheetRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_timesheets.json');
+        $this->repository = new LocalTimesheetRepository(
+            $this->storageFactory,
+            $this->activityRepository,
+            $this->userRepository,
+            'test_timesheets.json'
+        );
         $this->activity = new Activity(
             EntityKey::zebra(123),
             'Test Activity',
@@ -86,7 +91,7 @@ class LocalTimesheetRepositoryTest extends TestCase
             'activity-123'
         );
         $this->role = new Role(1, null, 'Developer', 'Developer', 'employee', 'active');
-        
+
         // Set up user repository to return roles by ID
         $this->userRepository->method('getCurrentUserRoleById')
             ->willReturnCallback(function ($roleId) {

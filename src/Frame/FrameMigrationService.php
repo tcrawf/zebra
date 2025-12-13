@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Tcrawf\Zebra\Frame;
 
 /**
- * Service for migrating frames from old format (denormalized activity data) to new format (normalized activity key only).
+ * Service for migrating frames from old format (denormalized activity data)
+ * to new format (normalized activity key only).
  */
 class FrameMigrationService
 {

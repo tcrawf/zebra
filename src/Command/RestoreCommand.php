@@ -187,7 +187,10 @@ class RestoreCommand extends Command
                             } catch (\Exception $e) {
                                 $io->error(sprintf('Migration failed: %s', $e->getMessage()));
                                 // Don't fail the restore, just warn
-                                $io->warning('Restore completed but migration failed. Run "zebra migrate-frames" to migrate.');
+                                $io->warning(
+                                    'Restore completed but migration failed. ' .
+                                    'Run "zebra migrate-frames" to migrate.'
+                                );
                             }
                         } else {
                             // Set flag to false to trigger migration on next command
@@ -228,7 +231,10 @@ class RestoreCommand extends Command
                             } catch (\Exception $e) {
                                 $io->error(sprintf('Migration failed: %s', $e->getMessage()));
                                 // Don't fail the restore, just warn
-                                $io->warning('Restore completed but migration failed. Run "zebra migrate-timesheets" to migrate.');
+                                $io->warning(
+                                    'Restore completed but migration failed. ' .
+                                    'Run "zebra migrate-timesheets" to migrate.'
+                                );
                             }
                         } else {
                             // Set flag to false to trigger migration on next command

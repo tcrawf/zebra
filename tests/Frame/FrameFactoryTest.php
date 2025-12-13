@@ -181,7 +181,12 @@ class FrameFactoryTest extends TestCase
         );
 
         $stopTime = Carbon::now();
-        $completedFrame = FrameFactory::withStopTime($frame, $stopTime, $this->activityRepository, $this->userRepository);
+        $completedFrame = FrameFactory::withStopTime(
+            $frame,
+            $stopTime,
+            $this->activityRepository,
+            $this->userRepository
+        );
 
         $this->assertNotSame($frame, $completedFrame);
         $this->assertFalse($completedFrame->isActive());
@@ -224,7 +229,12 @@ class FrameFactoryTest extends TestCase
         );
 
         $stopTime = '2024-01-01 12:00:00';
-        $completedFrame = FrameFactory::withStopTime($frame, $stopTime, $this->activityRepository, $this->userRepository);
+        $completedFrame = FrameFactory::withStopTime(
+            $frame,
+            $stopTime,
+            $this->activityRepository,
+            $this->userRepository
+        );
 
         $expectedTimestamp = $timezoneFormatter->parseLocalToUtc($stopTime)->timestamp;
         $this->assertEquals($expectedTimestamp, $completedFrame->getStopTimestamp());
@@ -460,7 +470,9 @@ class FrameFactoryTest extends TestCase
         ];
 
         $this->expectException(\Tcrawf\Zebra\Exception\TrackException::class);
-        $this->expectExceptionMessage("Invalid array format: 'role' must be null, an array with 'id', or RoleInterface");
+        $this->expectExceptionMessage(
+            "Invalid array format: 'role' must be null, an array with 'id', or RoleInterface"
+        );
 
         FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
     }

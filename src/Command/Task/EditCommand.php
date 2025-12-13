@@ -282,7 +282,10 @@ class EditCommand extends Command
 
             // Check if editor failed to open
             if ($editedJson === null) {
-                $io->error('Failed to open editor. Please ensure you are in an interactive terminal and have a valid editor configured ($EDITOR or $VISUAL).');
+                $io->error(
+                    'Failed to open editor. Please ensure you are in an interactive terminal ' .
+                    'and have a valid editor configured ($EDITOR or $VISUAL).'
+                );
                 return Command::FAILURE;
             }
 
@@ -371,10 +374,14 @@ class EditCommand extends Command
                     try {
                         $status = TaskStatus::from($editedData['status']);
                         if ($status === TaskStatus::Complete) {
-                            throw new \RuntimeException('Cannot set status to complete via edit. Use task:complete to complete a task.');
+                            throw new \RuntimeException(
+                                'Cannot set status to complete via edit. Use task:complete to complete a task.'
+                            );
                         }
                     } catch (\ValueError $e) {
-                        throw new \RuntimeException("Invalid status '{$editedData['status']}'. Valid values: open, in-progress");
+                        throw new \RuntimeException(
+                            "Invalid status '{$editedData['status']}'. Valid values: open, in-progress"
+                        );
                     }
                 }
 

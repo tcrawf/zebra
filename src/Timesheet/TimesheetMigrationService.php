@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Tcrawf\Zebra\Timesheet;
 
 /**
- * Service for migrating timesheets from old format (denormalized activity data) to new format (normalized activity key only).
+ * Service for migrating timesheets from old format (denormalized activity data)
+ * to new format (normalized activity key only).
  */
 class TimesheetMigrationService
 {

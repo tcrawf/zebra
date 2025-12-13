@@ -14,7 +14,8 @@ use Tcrawf\Zebra\Timesheet\TimesheetFileStorageFactory;
 use Tcrawf\Zebra\Timesheet\TimesheetMigrationService;
 
 /**
- * Command to migrate timesheets from old format (denormalized activity data) to new format (normalized activity key only).
+ * Command to migrate timesheets from old format (denormalized activity data)
+ * to new format (normalized activity key only).
  */
 class MigrateTimesheetsCommand extends Command
 {
@@ -51,7 +52,8 @@ class MigrateTimesheetsCommand extends Command
             // Prompt for confirmation if interactive
             if ($input->isInteractive()) {
                 $question = new ConfirmationQuestion(
-                    'Timesheets need to be migrated to the new format. This will rewrite timesheet storage file. Continue? (yes/no) ',
+                    'Timesheets need to be migrated to the new format. ' .
+                    'This will rewrite timesheet storage file. Continue? (yes/no) ',
                     true
                 );
                 if (!$io->askQuestion($question)) {

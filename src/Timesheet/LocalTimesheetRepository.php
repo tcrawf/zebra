@@ -67,7 +67,11 @@ class LocalTimesheetRepository implements LocalTimesheetRepositoryInterface
 
         foreach ($timesheetsData as $timesheetData) {
             try {
-                $timesheets[] = TimesheetFactory::fromArray($timesheetData, $this->activityRepository, $this->userRepository);
+                $timesheets[] = TimesheetFactory::fromArray(
+                    $timesheetData,
+                    $this->activityRepository,
+                    $this->userRepository
+                );
             } catch (\Exception $e) {
                 // Skip timesheets that cannot be deserialized
                 continue;
@@ -92,7 +96,11 @@ class LocalTimesheetRepository implements LocalTimesheetRepositoryInterface
         }
 
         try {
-            return TimesheetFactory::fromArray($timesheetsData[$uuid], $this->activityRepository, $this->userRepository);
+            return TimesheetFactory::fromArray(
+                $timesheetsData[$uuid],
+                $this->activityRepository,
+                $this->userRepository
+            );
         } catch (\Exception $e) {
             return null;
         }

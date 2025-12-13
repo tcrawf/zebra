@@ -51,7 +51,8 @@ class MigrateFramesCommand extends Command
             // Prompt for confirmation if interactive
             if ($input->isInteractive()) {
                 $question = new ConfirmationQuestion(
-                    'Frames need to be migrated to the new format. This will rewrite frame storage files. Continue? (yes/no) ',
+                    'Frames need to be migrated to the new format. ' .
+                    'This will rewrite frame storage files. Continue? (yes/no) ',
                     true
                 );
                 if (!$io->askQuestion($question)) {

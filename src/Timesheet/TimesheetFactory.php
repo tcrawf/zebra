@@ -133,7 +133,8 @@ class TimesheetFactory
                     );
                 } else {
                     throw new TrackException(
-                        "Invalid array format: 'activity' must have 'key' field and ActivityRepositoryInterface must be provided, " .
+                        "Invalid array format: 'activity' must have 'key' field and " .
+                        "ActivityRepositoryInterface must be provided, " .
                         "or old format with 'name' and 'project' fields"
                     );
                 }

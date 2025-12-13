@@ -112,7 +112,11 @@ class Application extends SymfonyApplication
 
         // Initialize frame repository with activity repository and user repository
         $frameStorageFactory = new FrameFileStorageFactory();
-        $this->frameRepository = new FrameRepository($frameStorageFactory, $this->activityRepository, $this->userRepository);
+        $this->frameRepository = new FrameRepository(
+            $frameStorageFactory,
+            $this->activityRepository,
+            $this->userRepository
+        );
 
         $this->timezoneFormatter = new TimezoneFormatter();
         $this->reportService = new ReportService($this->projectRepository, $this->timezoneFormatter);
@@ -138,7 +142,11 @@ class Application extends SymfonyApplication
 
         // Initialize timesheet repositories
         $timesheetStorageFactory = new TimesheetFileStorageFactory();
-        $this->timesheetRepository = new LocalTimesheetRepository($timesheetStorageFactory, $this->activityRepository, $this->userRepository);
+        $this->timesheetRepository = new LocalTimesheetRepository(
+            $timesheetStorageFactory,
+            $this->activityRepository,
+            $this->userRepository
+        );
         $timesheetApiService = new TimesheetApiService($client);
         $this->zebraTimesheetRepository = new ZebraTimesheetRepository(
             $timesheetApiService,
@@ -374,7 +382,11 @@ class Application extends SymfonyApplication
         // Check for frame migration if needed
         // Always check if migration is needed, regardless of flag (in case data was restored or flag is incorrect)
         // Skip migration check for commands that don't need it or are called programmatically
-        $skipMigrationCheck = in_array($commandName, ['migrate-frames', 'migrate-timesheets', 'list', 'help', 'install', 'completion'], true);
+        $skipMigrationCheck = in_array(
+            $commandName,
+            ['migrate-frames', 'migrate-timesheets', 'list', 'help', 'install', 'completion'],
+            true
+        );
         if (!$skipMigrationCheck) {
             $storageFactory = new FrameFileStorageFactory();
             $migrationService = new FrameMigrationService($storageFactory);

@@ -131,7 +131,8 @@ readonly class Track implements TrackInterface
             if ($defaultRole === null) {
                 throw new \RuntimeException(
                     'Activity requires a role. ' .
-                    'Either provide a role with --role option or mark the frame as individual with --individual flag. ' .
+                    'Either provide a role with --role option or mark the frame as individual ' .
+                    'with --individual flag. ' .
                     'No default role found. Please configure user.defaultRole.id in config.json.'
                 );
             }
@@ -256,7 +257,8 @@ readonly class Track implements TrackInterface
             if ($defaultRole === null) {
                 throw new \RuntimeException(
                     'Activity requires a role. ' .
-                    'Either provide a role with --role option or mark the frame as individual with --individual flag. ' .
+                    'Either provide a role with --role option or mark the frame as individual ' .
+                    'with --individual flag. ' .
                     'No default role found. Please configure user.defaultRole.id in config.json.'
                 );
             }
