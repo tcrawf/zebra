@@ -113,10 +113,6 @@ class TimesheetMigrationService
                 // Old format: role is an array/object with 'id'
                 $migratedTimesheet['roleId'] = (int) $migratedTimesheet['role']['id'];
                 unset($migratedTimesheet['role']);
-            } elseif ($migratedTimesheet['role'] === null) {
-                // Null role: remove 'role' key, ensure 'roleId' is null
-                $migratedTimesheet['roleId'] = null;
-                unset($migratedTimesheet['role']);
             } else {
                 // Invalid format: remove 'role' key, set 'roleId' to null
                 $migratedTimesheet['roleId'] = null;

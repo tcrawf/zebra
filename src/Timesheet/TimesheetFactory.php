@@ -158,8 +158,6 @@ class TimesheetFactory
                 $roleId = (int) $data['role']['id'];
             } elseif ($data['role'] instanceof RoleInterface) {
                 $roleId = $data['role']->id;
-            } elseif ($data['role'] === null) {
-                $roleId = null;
             } else {
                 throw new TrackException(
                     "Invalid array format: 'role' must be null, an array with 'id', or RoleInterface"

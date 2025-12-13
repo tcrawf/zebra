@@ -313,7 +313,7 @@ class EditCommand extends Command
 
                 // Parse activity
                 $activity = $task->activity;
-                if (isset($editedData['activity'])) {
+                if (array_key_exists('activity', $editedData)) {
                     if ($editedData['activity'] === null) {
                         $activity = null;
                     } elseif (isset($editedData['activity']['key'])) {
@@ -343,7 +343,7 @@ class EditCommand extends Command
 
                 // Parse due date
                 $dueAt = $task->dueAt;
-                if (isset($editedData['due'])) {
+                if (array_key_exists('due', $editedData)) {
                     if ($editedData['due'] === null) {
                         $dueAt = null;
                     } else {

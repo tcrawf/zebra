@@ -139,8 +139,13 @@ class RestartCommand extends Command
             $gap = !$input->getOption('no-gap');
 
             // Restart with the same activity, description, isIndividual, and role
+            // Assert that activity is an Activity instance (not just ActivityInterface)
+            $activity = $frame->activity;
+            if (!($activity instanceof \Tcrawf\Zebra\Activity\Activity)) {
+                throw new \RuntimeException('Frame activity must be an Activity instance');
+            }
             $restartedFrame = $this->track->start(
-                $frame->activity,
+                $activity,
                 $frame->description,
                 $startAt,
                 $gap,

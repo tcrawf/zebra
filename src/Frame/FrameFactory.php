@@ -86,10 +86,6 @@ class FrameFactory
             );
         }
 
-        if ($activityKey === null) {
-            throw new TrackException("Failed to extract activity key from frame data");
-        }
-
         // Handle role: support both old format (full role object) and new format (only roleId)
         $roleId = null;
         if (isset($data['roleId'])) {
@@ -101,8 +97,6 @@ class FrameFactory
                 $roleId = (int) $data['role']['id'];
             } elseif ($data['role'] instanceof RoleInterface) {
                 $roleId = $data['role']->id;
-            } elseif ($data['role'] === null) {
-                $roleId = null;
             } else {
                 throw new TrackException(
                     "Invalid array format: 'role' must be null, an array with 'id', or RoleInterface"

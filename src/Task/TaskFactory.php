@@ -65,7 +65,7 @@ class TaskFactory
 
         // Reconstruct Activity from array if needed
         $activity = null;
-        if (isset($data['activity']) && $data['activity'] !== null) {
+        if (isset($data['activity'])) {
             if (is_array($data['activity'])) {
                 if (!isset($data['activity']['key']) || !isset($data['activity']['project'])) {
                     throw new TrackException(

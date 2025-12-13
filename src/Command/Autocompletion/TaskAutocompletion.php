@@ -62,8 +62,8 @@ class TaskAutocompletion
             }
 
             // Within same status, sort by due date (nulls last)
-            $aDue = $a->dueAt?->timestamp ?? PHP_INT_MAX;
-            $bDue = $b->dueAt?->timestamp ?? PHP_INT_MAX;
+            $aDue = $a->dueAt->timestamp ?? PHP_INT_MAX;
+            $bDue = $b->dueAt->timestamp ?? PHP_INT_MAX;
             $dueCompare = $aDue <=> $bDue;
             if ($dueCompare !== 0) {
                 return $dueCompare;

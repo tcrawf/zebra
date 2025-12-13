@@ -130,10 +130,6 @@ class FrameMigrationService
                 // Old format: role is an array/object with 'id'
                 $migratedFrame['roleId'] = (int) $migratedFrame['role']['id'];
                 unset($migratedFrame['role']);
-            } elseif ($migratedFrame['role'] === null) {
-                // Null role: remove 'role' key, ensure 'roleId' is null
-                $migratedFrame['roleId'] = null;
-                unset($migratedFrame['role']);
             } else {
                 // Invalid format: remove 'role' key, set 'roleId' to null
                 $migratedFrame['roleId'] = null;
