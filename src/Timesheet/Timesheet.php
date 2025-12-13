@@ -119,6 +119,7 @@ class Timesheet implements TimesheetInterface
         if ($roleOrId instanceof RoleInterface) {
             $this->roleId = $roleOrId->id;
             $this->roleCache = $roleOrId;
+            $this->userRepository = $userRepository;
         } elseif (is_int($roleOrId)) {
             $this->roleId = $roleOrId;
             $this->userRepository = $userRepository;

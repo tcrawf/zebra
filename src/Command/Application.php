@@ -373,7 +373,8 @@ class Application extends SymfonyApplication
 
         // Check for frame migration if needed
         // Always check if migration is needed, regardless of flag (in case data was restored or flag is incorrect)
-        $skipMigrationCheck = in_array($commandName, ['migrate-frames', 'migrate-timesheets', 'list', 'help', 'install'], true);
+        // Skip migration check for commands that don't need it or are called programmatically
+        $skipMigrationCheck = in_array($commandName, ['migrate-frames', 'migrate-timesheets', 'list', 'help', 'install', 'completion'], true);
         if (!$skipMigrationCheck) {
             $storageFactory = new FrameFileStorageFactory();
             $migrationService = new FrameMigrationService($storageFactory);

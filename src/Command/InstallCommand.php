@@ -416,10 +416,85 @@ class InstallCommand extends Command
         try {
             // Use the source zebra (phar or bin/zebra) to generate the completion script
             $command = escapeshellarg($sourceZebra) . ' completion bash 2>&1';
-            $completionScript = shell_exec($command);
 
-            if ($completionScript === null || trim($completionScript) === '') {
+            // Use proc_open with timeout to avoid hanging
+            $descriptorspec = [
+                0 => ['pipe', 'r'], // stdin
+                1 => ['pipe', 'w'], // stdout
+                2 => ['pipe', 'w'], // stderr
+            ];
+
+            $process = @proc_open($command, $descriptorspec, $pipes);
+            if (!is_resource($process)) {
+                $io->warning('Could not execute command to generate completion script. Skipping autocompletion setup.');
+                return;
+            }
+
+            // Close stdin immediately (command shouldn't need input)
+            fclose($pipes[0]);
+
+            // Set streams to non-blocking mode for timeout handling
+            stream_set_blocking($pipes[1], false);
+            stream_set_blocking($pipes[2], false);
+
+            // Read output with timeout
+            $completionScript = '';
+            $stderr = '';
+            $timeout = 5; // seconds
+            $startTime = time();
+
+            // Read from pipes until process completes or timeout
+            while (true) {
+                // Check for timeout
+                if (time() - $startTime > $timeout) {
+                    proc_terminate($process);
+                    proc_close($process);
+                    $io->warning('Timeout generating completion script. Skipping autocompletion setup.');
+                    return;
+                }
+
+                // Read available data (non-blocking)
+                $read = stream_get_contents($pipes[1]);
+                if ($read !== false && $read !== '') {
+                    $completionScript .= $read;
+                }
+
+                $read = stream_get_contents($pipes[2]);
+                if ($read !== false && $read !== '') {
+                    $stderr .= $read;
+                }
+
+                // Check if process is still running
+                $status = proc_get_status($process);
+                if (!$status['running']) {
+                    // Process finished, read any remaining output
+                    $remaining = stream_get_contents($pipes[1]);
+                    if ($remaining !== false) {
+                        $completionScript .= $remaining;
+                    }
+                    $remaining = stream_get_contents($pipes[2]);
+                    if ($remaining !== false) {
+                        $stderr .= $remaining;
+                    }
+                    break;
+                }
+
+                // Small delay to avoid busy waiting
+                usleep(100000); // 0.1 seconds
+            }
+
+            // Close pipes
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+
+            // Get exit code
+            $exitCode = proc_close($process);
+
+            if ($exitCode !== 0 || trim($completionScript) === '') {
                 $io->warning('Could not generate completion script. Skipping autocompletion setup.');
+                if (!empty($stderr)) {
+                    $io->writeln('Error: ' . trim($stderr));
+                }
                 return;
             }
 
