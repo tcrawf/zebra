@@ -1,3 +1,31 @@
 {
-    "intelephense.environment.phpVersion": "8.4"
+    "intelephense.environment.phpVersion": "8.4",
+    // PHP CodeSniffer & Beautifier extension configuration
+    // Install extension: valeryanm.vscode-phpsab
+    "phpsab.standard": "${workspaceFolder}/phpcs.xml",
+    "phpsab.autoConfigSearch": false,
+    "phpsab.executablePathCS": "${workspaceFolder}/vendor/bin/phpcs",
+    "phpsab.executablePathCBF": "${workspaceFolder}/vendor/bin/phpcbf",
+    "phpsab.snifferShowSources": true,
+    "phpsab.snifferShowWarnings": true,
+    // Format on save for PHP files using phpcbf
+    "[php]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "valeryanm.vscode-phpsab",
+        "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit"
+        }
+    },
+    // File settings
+    "files.eol": "\n",
+    "files.insertFinalNewline": true,
+    "files.trimTrailingWhitespace": true,
+    // PHP CodeSniffer extension (alternative/backup)
+    // Install extension: IoannisKappas.phpcs
+    "phpcs.enable": true,
+    "phpcs.standard": "${workspaceFolder}/phpcs.xml",
+    "phpcs.executablePath": "${workspaceFolder}/vendor/bin/phpcs",
+    "phpcs.autoConfigSearch": false,
+    "phpcs.showSources": true,
+    "phpcs.showWarnings": true
 }

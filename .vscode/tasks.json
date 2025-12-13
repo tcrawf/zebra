@@ -18,6 +18,40 @@
 				"reveal": "silent",
 				"close": true
 			}
+		},
+		{
+			"label": "PHP: Fix Code Style (phpcbf)",
+			"type": "shell",
+			"command": "composer run phpcbf-fix",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			}
+		},
+		{
+			"label": "PHP: Check Code Style (phpcs)",
+			"type": "shell",
+			"command": "composer run phpcs-check",
+			"problemMatcher": {
+				"owner": "phpcs",
+				"fileLocation": [
+					"relative",
+					"${workspaceFolder}"
+				],
+				"pattern": {
+					"regexp": "^(.+):(\\d+):(\\d+):\\s+(ERROR|WARNING)\\s+-\\s+(.+)$",
+					"file": 1,
+					"line": 2,
+					"column": 3,
+					"severity": 4,
+					"message": 5
+				}
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			}
 		}
 	]
 }
