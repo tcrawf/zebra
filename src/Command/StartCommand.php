@@ -52,7 +52,7 @@ class StartCommand extends Command
             ->setDescription('Start tracking a new frame')
             ->addArgument(
                 'activity',
-                InputArgument::REQUIRED | InputArgument::IS_ARRAY,
+                InputArgument::OPTIONAL | InputArgument::IS_ARRAY,
                 'Activity alias or ID (use +description or +"description text" for frame description)'
             )
             ->addOption(
@@ -115,10 +115,10 @@ class StartCommand extends Command
                 }
             }
 
-            // If still no activity found, show search/menu
+            // If still no activity found, prompt for activity search (only in interactive mode)
             if ($activity === null) {
-                // Prompt user to search for activity (only in interactive mode)
                 if ($input->isInteractive()) {
+                    // Prompt user to search for activity - resolveActivity will show search menu if multiple matches
                     $searchTerm = $io->ask('No activity specified. Search for activity', '');
                     if (empty($searchTerm)) {
                         $io->writeln('<fg=red>Activity is required</fg=red>');
@@ -133,6 +133,7 @@ class StartCommand extends Command
         }
 
         // Resolve activity if we don't have one yet (either from identifier or from last activity lookup)
+        // resolveActivity will show a search menu if multiple matches are found
         if ($activity === null) {
             $activity = $this->resolveActivity($activityIdentifier, $io);
             if ($activity === null) {
