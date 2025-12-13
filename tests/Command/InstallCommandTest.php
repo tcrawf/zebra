@@ -22,7 +22,7 @@ class InstallCommandTest extends TestCase
         $this->command = new InstallCommand();
 
         $application = new Application();
-        $application->add($this->command);
+        $application->addCommand($this->command);
         $this->commandTester = new CommandTester($this->command);
 
         // Create temporary directory for testing

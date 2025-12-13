@@ -117,7 +117,6 @@ class Application extends SymfonyApplication
             $this->activityRepository,
             $this->userRepository
         );
-
         $this->timezoneFormatter = new TimezoneFormatter();
         $this->reportService = new ReportService($this->projectRepository, $this->timezoneFormatter);
 
