@@ -206,10 +206,11 @@ class TimesheetEditCommand extends Command
                     $role = null;
                 }
 
-                // Validate: if switching from individual to non-individual, require role
-                if (!$isIndividual && $role === null) {
+                // Validate: if activity requires role and not individual, require role
+                // Activities with roleRequired=false (like holidays) can have no role even if not individual
+                if ($activity->roleRequired && !$isIndividual && $role === null) {
                     throw new \RuntimeException(
-                        'Non-individual timesheets must have a role. Set role_id or set isIndividual to true.'
+                        'Activity requires a role. Set role_id or set isIndividual to true.'
                     );
                 }
 

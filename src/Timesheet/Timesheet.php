@@ -44,7 +44,11 @@ class Timesheet implements TimesheetInterface
             $this->roleCache = $loadedRole;
             return $loadedRole;
         }
+        // Role not found - return null instead of throwing error
+        // This handles cases where role was deleted or user no longer has access
+        return null;
     }
+
             // Otherwise return cached role (set during construction)
     if ($this->roleCache === null) {
         throw new \RuntimeException(
@@ -145,7 +149,8 @@ class Timesheet implements TimesheetInterface
         }
 
         // Validate that either role is set or individualAction is true
-        if ($this->roleId === null && !$individualAction) {
+        // BUT: activities with roleRequired=false (like holidays) can have no role even if not individual
+        if ($this->roleId === null && !$individualAction && $activity->roleRequired) {
             throw new InvalidArgumentException(
                 'Either role must be set or individualAction must be true'
             );
