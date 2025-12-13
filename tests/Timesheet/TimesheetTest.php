@@ -137,12 +137,22 @@ class TimesheetTest extends TestCase
         $uuid = Uuid::random();
         $date = Carbon::now()->startOfDay();
 
+        // Create an activity that requires a role
+        $activityRequiringRole = new Activity(
+            EntityKey::zebra(123),
+            'Test Activity',
+            'Activity Description',
+            EntityKey::zebra(100),
+            'activity-123',
+            true // roleRequired = true
+        );
+
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Either role must be set or individualAction must be true');
+        $this->expectExceptionMessage('Activity requires a role');
 
         new Timesheet(
             $uuid,
-            $this->activity,
+            $activityRequiringRole,
             'Test description',
             null,
             1.0,
@@ -151,6 +161,38 @@ class TimesheetTest extends TestCase
             false,
             []
         );
+    }
+
+    public function testConstructorWithNoRoleIdAndNotIndividualAllowedWhenRoleNotRequired(): void
+    {
+        $uuid = Uuid::random();
+        $date = Carbon::now()->startOfDay();
+
+        // Create an activity that does NOT require a role (like holidays)
+        $activityNotRequiringRole = new Activity(
+            EntityKey::zebra(456),
+            'Holiday Activity',
+            'Holiday Description',
+            EntityKey::zebra(100),
+            'holiday-456',
+            false // roleRequired = false
+        );
+
+        // Should NOT throw exception - activities with roleRequired=false can have no role
+        $timesheet = new Timesheet(
+            $uuid,
+            $activityNotRequiringRole,
+            'Test description',
+            null,
+            1.0,
+            $date,
+            null,
+            false, // not individual
+            []
+        );
+
+        $this->assertNull($timesheet->roleId);
+        $this->assertFalse($timesheet->individualAction);
     }
 
     public function testConstructorWithNegativeTimeThrowsException(): void
