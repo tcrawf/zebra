@@ -11,7 +11,6 @@ use Tcrawf\Zebra\Activity\ActivityInterface;
 use Tcrawf\Zebra\EntityKey\EntityKey;
 use Tcrawf\Zebra\EntityKey\EntitySource;
 use Tcrawf\Zebra\Exception\TrackException;
-use Tcrawf\Zebra\Timezone\TimezoneFormatter;
 use Tcrawf\Zebra\Uuid\Uuid;
 use Tcrawf\Zebra\Uuid\UuidInterface;
 

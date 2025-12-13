@@ -5,19 +5,24 @@ declare(strict_types=1);
 namespace Tcrawf\Zebra\Tests\Timesheet;
 
 use Carbon\Carbon;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Tcrawf\Zebra\Activity\Activity;
+use Tcrawf\Zebra\Activity\ActivityRepositoryInterface;
 use Tcrawf\Zebra\EntityKey\EntityKey;
 use Tcrawf\Zebra\Exception\TrackException;
 use Tcrawf\Zebra\Role\Role;
 use Tcrawf\Zebra\Timesheet\Timesheet;
 use Tcrawf\Zebra\Timesheet\TimesheetFactory;
+use Tcrawf\Zebra\User\UserRepositoryInterface;
 use Tcrawf\Zebra\Uuid\Uuid;
 
 class TimesheetFactoryTest extends TestCase
 {
     private Activity $activity;
     private Role $role;
+    private ActivityRepositoryInterface&MockObject $activityRepository;
+    private UserRepositoryInterface&MockObject $userRepository;
 
     protected function setUp(): void
     {
@@ -29,6 +34,39 @@ class TimesheetFactoryTest extends TestCase
             'activity-123'
         );
         $this->role = new Role(5, null, 'Manager', 'Manager', 'employee', 'active');
+
+        // Create mock ActivityRepository that returns our test activity
+        $this->activityRepository = $this->createMock(ActivityRepositoryInterface::class);
+        $this->activityRepository->method('get')
+            ->willReturnCallback(function ($entityKey) {
+                // Return activity if it matches our test activity
+                if ($entityKey->toString() === $this->activity->entityKey->toString()) {
+                    return $this->activity;
+                }
+                // For other activity keys, create activities based on ID
+                if ($entityKey->source->value === 'zebra') {
+                    $activityId = is_int($entityKey->id) ? $entityKey->id : (int) $entityKey->id;
+                    $projectId = $activityId * 100; // Use pattern: activity 1 -> project 100, etc.
+                    return new Activity(
+                        $entityKey,
+                        "Activity {$activityId}",
+                        "Description {$activityId}",
+                        EntityKey::zebra($projectId),
+                        null
+                    );
+                }
+                return null;
+            });
+
+        // Create mock UserRepository that returns our test role
+        $this->userRepository = $this->createMock(UserRepositoryInterface::class);
+        $this->userRepository->method('getCurrentUserRoleById')
+            ->willReturnCallback(function ($roleId) {
+                if ($roleId === $this->role->id) {
+                    return $this->role;
+                }
+                return new Role($roleId, null, "Role {$roleId}", "Role {$roleId}", 'employee', 'active');
+            });
     }
 
     public function testCreate(): void
@@ -52,6 +90,7 @@ class TimesheetFactoryTest extends TestCase
         $this->assertEquals('Test description', $timesheet->description);
         $this->assertEquals('Client description', $timesheet->clientDescription);
         $this->assertEquals(2.5, $timesheet->time);
+        $this->assertEquals($this->role->id, $timesheet->roleId);
         $this->assertEquals($this->role, $timesheet->role);
         $this->assertEquals(5, $timesheet->role->id);
         $this->assertFalse($timesheet->individualAction);
@@ -106,7 +145,6 @@ class TimesheetFactoryTest extends TestCase
 
         $data = [
             'uuid' => $uuid->getHex(),
-            'projectId' => 100,
             'activity' => [
                 'key' => [
                     'source' => 'zebra',
@@ -138,7 +176,7 @@ class TimesheetFactoryTest extends TestCase
             'updatedAt' => $updatedAt->timestamp,
         ];
 
-        $timesheet = TimesheetFactory::fromArray($data);
+        $timesheet = TimesheetFactory::fromArray($data, $this->activityRepository, $this->userRepository);
 
         $this->assertEquals($uuid->getHex(), $timesheet->uuid);
         $this->assertEquals(100, $timesheet->getProjectId());
@@ -161,7 +199,6 @@ class TimesheetFactoryTest extends TestCase
         $uuid = Uuid::random();
         $data = [
             'uuid' => $uuid->getHex(),
-            'projectId' => 100,
             'activity' => [
                 'key' => [
                     'source' => 'zebra',
@@ -182,7 +219,7 @@ class TimesheetFactoryTest extends TestCase
             'individualAction' => true,
         ];
 
-        $timesheet = TimesheetFactory::fromArray($data);
+        $timesheet = TimesheetFactory::fromArray($data, $this->activityRepository, $this->userRepository);
 
         $this->assertNull($timesheet->clientDescription);
         $this->assertNull($timesheet->role);
@@ -193,7 +230,6 @@ class TimesheetFactoryTest extends TestCase
     public function testFromArrayMissingUuidThrowsException(): void
     {
         $data = [
-            'projectId' => 100,
             'activity' => [
                 'key' => [
                     'source' => 'zebra',
@@ -249,7 +285,7 @@ class TimesheetFactoryTest extends TestCase
             $this->expectException(TrackException::class);
             $this->expectExceptionMessage("Invalid array format: '{$field}' key is required");
 
-            TimesheetFactory::fromArray($data);
+            TimesheetFactory::fromArray($data, $this->activityRepository, $this->userRepository);
         }
     }
 
@@ -258,7 +294,6 @@ class TimesheetFactoryTest extends TestCase
         $uuid = Uuid::random();
         $data = [
             'uuid' => $uuid->getHex(),
-            'projectId' => 100,
             'activity' => [
                 'key' => [
                     'source' => 'zebra',
@@ -347,7 +382,7 @@ class TimesheetFactoryTest extends TestCase
             'doNotSync' => true,
         ];
 
-        $timesheet = TimesheetFactory::fromArray($data);
+        $timesheet = TimesheetFactory::fromArray($data, $this->activityRepository, $this->userRepository);
 
         $this->assertTrue($timesheet->doNotSync);
     }
@@ -378,7 +413,7 @@ class TimesheetFactoryTest extends TestCase
             'doNotSync' => false,
         ];
 
-        $timesheet = TimesheetFactory::fromArray($data);
+        $timesheet = TimesheetFactory::fromArray($data, $this->activityRepository, $this->userRepository);
 
         $this->assertFalse($timesheet->doNotSync);
     }
@@ -409,7 +444,7 @@ class TimesheetFactoryTest extends TestCase
             // Note: doNotSync is intentionally missing to test backwards compatibility
         ];
 
-        $timesheet = TimesheetFactory::fromArray($data);
+        $timesheet = TimesheetFactory::fromArray($data, $this->activityRepository, $this->userRepository);
 
         $this->assertFalse($timesheet->doNotSync);
     }
@@ -445,7 +480,8 @@ class TimesheetFactoryTest extends TestCase
         ];
 
         // Should load successfully with doNotSync defaulting to false
-        $timesheet = TimesheetFactory::fromArray($oldData);
+        // Old format data can be loaded without activityRepository (backward compatibility)
+        $timesheet = TimesheetFactory::fromArray($oldData, null, $this->userRepository);
 
         $this->assertFalse($timesheet->doNotSync);
         $this->assertEquals($uuid->getHex(), $timesheet->uuid);
@@ -457,7 +493,7 @@ class TimesheetFactoryTest extends TestCase
         $this->assertFalse($serialized['doNotSync']);
 
         // Should be able to round-trip through serialization
-        $reloaded = TimesheetFactory::fromArray($serialized);
+        $reloaded = TimesheetFactory::fromArray($serialized, $this->activityRepository, $this->userRepository);
         $this->assertFalse($reloaded->doNotSync);
     }
 

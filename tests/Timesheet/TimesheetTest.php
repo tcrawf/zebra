@@ -54,6 +54,7 @@ class TimesheetTest extends TestCase
         $this->assertEquals('Client description', $timesheet->clientDescription);
         $this->assertEquals(2.5, $timesheet->time);
         $this->assertEquals($date->format('Y-m-d'), $timesheet->date->format('Y-m-d'));
+        $this->assertEquals($this->role->id, $timesheet->roleId);
         $this->assertEquals($this->role, $timesheet->role);
         $this->assertFalse($timesheet->individualAction);
         $this->assertEquals($frameUuids, $timesheet->frameUuids);
@@ -81,6 +82,7 @@ class TimesheetTest extends TestCase
         );
 
         $this->assertNull($timesheet->clientDescription);
+        $this->assertNull($timesheet->roleId);
         $this->assertNull($timesheet->role);
         $this->assertTrue($timesheet->individualAction);
         $this->assertEquals([], $timesheet->frameUuids);
@@ -265,6 +267,97 @@ class TimesheetTest extends TestCase
         );
     }
 
+    public function testConstructorWithRoleRequiredActivityAndNoRoleThrowsException(): void
+    {
+        $uuid = Uuid::random();
+        $date = Carbon::now()->startOfDay();
+        $roleRequiredActivity = new Activity(
+            EntityKey::zebra(2),
+            'Role Required Activity',
+            'Description',
+            EntityKey::zebra(200),
+            null,
+            true // roleRequired = true
+        );
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Activity requires a role');
+
+        new Timesheet(
+            $uuid,
+            $roleRequiredActivity,
+            'Test description',
+            null,
+            1.0,
+            $date,
+            null,
+            false, // Not individual action, but no role provided
+            []
+        );
+    }
+
+    public function testConstructorWithRoleRequiredActivityAndIndividualActionSucceeds(): void
+    {
+        $uuid = Uuid::random();
+        $date = Carbon::now()->startOfDay();
+        $roleRequiredActivity = new Activity(
+            EntityKey::zebra(2),
+            'Role Required Activity',
+            'Description',
+            EntityKey::zebra(200),
+            null,
+            true // roleRequired = true
+        );
+
+        // Should succeed because individualAction = true
+        $timesheet = new Timesheet(
+            $uuid,
+            $roleRequiredActivity,
+            'Test description',
+            null,
+            1.0,
+            $date,
+            null,
+            true, // individualAction = true
+            []
+        );
+
+        $this->assertTrue($timesheet->individualAction);
+        $this->assertNull($timesheet->roleId);
+        $this->assertNull($timesheet->role);
+    }
+
+    public function testConstructorWithRoleRequiredActivityAndRoleSucceeds(): void
+    {
+        $uuid = Uuid::random();
+        $date = Carbon::now()->startOfDay();
+        $roleRequiredActivity = new Activity(
+            EntityKey::zebra(2),
+            'Role Required Activity',
+            'Description',
+            EntityKey::zebra(200),
+            null,
+            true // roleRequired = true
+        );
+
+        // Should succeed because role is provided
+        $timesheet = new Timesheet(
+            $uuid,
+            $roleRequiredActivity,
+            'Test description',
+            null,
+            1.0,
+            $date,
+            $this->role,
+            false,
+            []
+        );
+
+        $this->assertFalse($timesheet->individualAction);
+        $this->assertEquals($this->role->id, $timesheet->roleId);
+        $this->assertEquals($this->role, $timesheet->role);
+    }
+
 
     public function testGetDateTimestamp(): void
     {
@@ -377,18 +470,23 @@ class TimesheetTest extends TestCase
         $array = $timesheet->toArray();
 
         $this->assertEquals($uuid->getHex(), $array['uuid']);
-        $this->assertEquals(100, $array['projectId']);
+        // projectId is no longer stored - it's derived from activity
+        $this->assertArrayNotHasKey('projectId', $array);
         $this->assertIsArray($array['activity']);
+        // Normalized format: only activity.key, no name/desc/project/alias
+        $this->assertIsArray($array['activity']['key']);
         $this->assertEquals('zebra', $array['activity']['key']['source']);
         $this->assertEquals('123', $array['activity']['key']['id']);
-        $this->assertEquals('Test Activity', $array['activity']['name']);
+        $this->assertArrayNotHasKey('name', $array['activity']);
+        $this->assertArrayNotHasKey('desc', $array['activity']);
+        $this->assertArrayNotHasKey('project', $array['activity']);
+        $this->assertArrayNotHasKey('alias', $array['activity']);
         $this->assertEquals('Test description', $array['description']);
         $this->assertEquals('Client description', $array['clientDescription']);
         $this->assertEquals(2.5, $array['time']);
         $this->assertEquals('2024-01-15', $array['date']);
-        $this->assertIsArray($array['role']);
-        $this->assertEquals(5, $array['role']['id']);
-        $this->assertEquals('Manager', $array['role']['name']);
+        $this->assertEquals(5, $array['roleId']); // New format: only roleId
+        $this->assertArrayNotHasKey('role', $array); // Should not have 'role' key
         $this->assertFalse($array['individualAction']);
         $this->assertEquals($frameUuids, $array['frameUuids']);
         $this->assertEquals(42, $array['zebraId']);

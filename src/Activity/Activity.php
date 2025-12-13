@@ -18,25 +18,28 @@ readonly class Activity implements ActivityInterface
      * @param string $description
      * @param EntityKeyInterface $projectEntityKey
      * @param string|null $alias
+     * @param bool $roleRequired
      */
     public function __construct(
         public EntityKeyInterface $entityKey,
         public string $name,
         public string $description,
         public EntityKeyInterface $projectEntityKey,
-        public string|null $alias = null
+        public string|null $alias = null,
+        public bool $roleRequired = false
     ) {
     }
 
     public function __toString(): string
     {
         return sprintf(
-            'Activity(entityKey=%s, name=%s, description=%s, projectEntityKey=%s, alias=%s)',
+            'Activity(entityKey=%s, name=%s, description=%s, projectEntityKey=%s, alias=%s, roleRequired=%s)',
             $this->entityKey->toString(),
             $this->name,
             $this->description,
             $this->projectEntityKey->toString(),
-            $this->alias ?? 'null'
+            $this->alias ?? 'null',
+            $this->roleRequired ? 'true' : 'false'
         );
     }
 }

@@ -6,13 +6,14 @@ namespace Tcrawf\Zebra\Frame;
 
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
-use Tcrawf\Zebra\Activity\Activity;
+use Tcrawf\Zebra\Activity\ActivityInterface;
+use Tcrawf\Zebra\Activity\ActivityRepositoryInterface;
 use Tcrawf\Zebra\EntityKey\EntityKey;
 use Tcrawf\Zebra\EntityKey\EntitySource;
 use Tcrawf\Zebra\Exception\TrackException;
-use Tcrawf\Zebra\Role\Role;
 use Tcrawf\Zebra\Role\RoleInterface;
 use Tcrawf\Zebra\Timezone\TimezoneFormatter;
+use Tcrawf\Zebra\User\UserRepositoryInterface;
 use Tcrawf\Zebra\Uuid\Uuid;
 use Tcrawf\Zebra\Uuid\UuidInterface;
 
@@ -25,7 +26,7 @@ class FrameFactory
     public static function create(
         CarbonInterface|int|string $startTime,
         CarbonInterface|int|string|null $stopTime,
-        Activity $activity,
+        ActivityInterface $activity,
         bool $isIndividual,
         RoleInterface|null $role,
         string $description = '',
@@ -39,16 +40,19 @@ class FrameFactory
             $frameUuid,
             $startTime,
             $stopTime,
-            $activity,
+            $activity, // Frame constructor will extract activityKey from Activity
             $isIndividual,
-            $role,
+            $role, // Frame constructor will extract roleId from Role
             $description,
             $updatedAt
         );
     }
 
-    public static function fromArray(array $data): Frame
-    {
+    public static function fromArray(
+        array $data,
+        ?ActivityRepositoryInterface $activityRepository = null,
+        ?UserRepositoryInterface $userRepository = null
+    ): Frame {
         if (!isset($data['uuid'])) {
             throw new TrackException("Invalid array format: 'uuid' key is required");
         }
@@ -61,45 +65,47 @@ class FrameFactory
         $uuid = Uuid::fromHex($uuidHex);
         $isIndividual = (bool) $data['isIndividual'];
 
-        // Reconstruct Activity from array if needed
-        $activity = $data['activity'];
-        if (is_array($activity)) {
-            if (!isset($activity['key']) || !isset($activity['project'])) {
+        // Handle activity: only support normalized format (only key)
+        $activityData = $data['activity'];
+        $activityKey = null;
+
+        if (is_array($activityData)) {
+            // Normalized format: only has 'key'
+            if (!isset($activityData['key'])) {
                 throw new TrackException(
-                    "Invalid array format: 'activity' must have 'key' and 'project' keys"
+                    "Invalid array format: 'activity' must have 'key' field"
                 );
             }
-
-            $activityEntityKey = self::createEntityKeyFromArray($activity['key']);
-            $projectEntityKey = self::createEntityKeyFromArray($activity['project']);
-
-            $activity = new Activity(
-                $activityEntityKey,
-                $activity['name'],
-                $activity['desc'] ?? '',
-                $projectEntityKey,
-                $activity['alias'] ?? null
+            $activityKey = self::createEntityKeyFromArray($activityData['key']);
+        } elseif ($activityData instanceof ActivityInterface) {
+            // Already an Activity object (shouldn't happen in storage, but handle it)
+            $activityKey = $activityData->entityKey;
+        } else {
+            throw new TrackException(
+                "Invalid array format: 'activity' must be an array with 'key' field or ActivityInterface"
             );
         }
 
-        // Reconstruct Role from array if needed
-        // Role is always present in storage (null for individual frames)
-        $role = null;
-        if (isset($data['role'])) {
-            if (is_array($data['role'])) {
-                $role = new Role(
-                    $data['role']['id'],
-                    null,
-                    $data['role']['name'] ?? '',
-                    '',
-                    '',
-                    ''
-                );
+        if ($activityKey === null) {
+            throw new TrackException("Failed to extract activity key from frame data");
+        }
+
+        // Handle role: support both old format (full role object) and new format (only roleId)
+        $roleId = null;
+        if (isset($data['roleId'])) {
+            // New format: only roleId
+            $roleId = is_int($data['roleId']) ? $data['roleId'] : null;
+        } elseif (isset($data['role'])) {
+            // Old format: full role object (for backward compatibility during migration)
+            if (is_array($data['role']) && isset($data['role']['id'])) {
+                $roleId = (int) $data['role']['id'];
             } elseif ($data['role'] instanceof RoleInterface) {
-                $role = $data['role'];
+                $roleId = $data['role']->id;
+            } elseif ($data['role'] === null) {
+                $roleId = null;
             } else {
                 throw new TrackException(
-                    "Invalid array format: 'role' must be null, an array, or RoleInterface"
+                    "Invalid array format: 'role' must be null, an array with 'id', or RoleInterface"
                 );
             }
         }
@@ -109,11 +115,13 @@ class FrameFactory
             $uuid,
             $data['start'] ?? null,
             $data['stop'] ?? null,
-            $activity,
+            $activityKey, // Pass EntityKeyInterface, Frame will load Activity via repository
             $isIndividual,
-            $role,
+            $roleId, // Pass roleId (int|null), Frame will load Role via repository
             $data['desc'] ?? '',
-            $data['updatedAt'] ?? null
+            $data['updatedAt'] ?? null,
+            $activityRepository,
+            $userRepository
         );
     }
 
@@ -125,8 +133,12 @@ class FrameFactory
      * @param CarbonInterface|int|string $stopTime The stop time to set
      * @return Frame A new Frame instance with the stop time set
      */
-    public static function withStopTime(FrameInterface $frame, CarbonInterface|int|string $stopTime): Frame
-    {
+    public static function withStopTime(
+        FrameInterface $frame,
+        CarbonInterface|int|string $stopTime,
+        ?ActivityRepositoryInterface $activityRepository = null,
+        ?UserRepositoryInterface $userRepository = null
+    ): Frame {
         $data = $frame->toArray();
         // Replace stopTime and update updatedAt
         if (is_int($stopTime)) {
@@ -143,7 +155,7 @@ class FrameFactory
         }
         $data['updatedAt'] = Carbon::now()->timestamp;
 
-        return self::fromArray($data);
+        return self::fromArray($data, $activityRepository, $userRepository);
     }
 
     /**

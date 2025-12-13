@@ -57,8 +57,11 @@ class TimesheetFactory
         );
     }
 
-    public static function fromArray(array $data): Timesheet
-    {
+    public static function fromArray(
+        array $data,
+        ?ActivityRepositoryInterface $activityRepository = null,
+        ?UserRepositoryInterface $userRepository = null
+    ): Timesheet {
         if (!isset($data['uuid'])) {
             throw new TrackException("Invalid array format: 'uuid' key is required");
         }
@@ -90,55 +93,79 @@ class TimesheetFactory
             throw new TrackException("Invalid array format: 'frameUuids' must be an array");
         }
 
-        // Reconstruct Activity from array if needed
+        // Handle activity: support both old format (full activity data) and new format (only key)
         $activity = $data['activity'];
         if (is_array($activity)) {
-            if (!isset($activity['key']) || !isset($activity['project'])) {
+            // Require activity key
+            if (!isset($activity['key'])) {
                 throw new TrackException(
-                    "Invalid array format: 'activity' must have 'key' and 'project' keys"
+                    "Invalid array format: 'activity' must have 'key' field"
                 );
             }
 
             $activityEntityKey = self::createEntityKeyFromArray($activity['key']);
-            $projectEntityKey = self::createEntityKeyFromArray($activity['project']);
 
-            $activity = new Activity(
-                $activityEntityKey,
-                $activity['name'],
-                $activity['desc'] ?? '',
-                $projectEntityKey,
-                $activity['alias'] ?? null
-            );
+            // Load activity from repository if available
+            if ($activityRepository !== null) {
+                $loadedActivity = $activityRepository->get($activityEntityKey);
+                if ($loadedActivity !== null) {
+                    $activity = $loadedActivity;
+                } else {
+                    // Activity not found in repository - this shouldn't happen with normalized data
+                    // But handle gracefully for migration period
+                    throw new TrackException(
+                        "Activity not found in repository for key: {$activityEntityKey->toString()}"
+                    );
+                }
+            } else {
+                // No repository available - try to reconstruct from old format data if present
+                // This handles backward compatibility during migration
+                if (isset($activity['project']) && isset($activity['name'])) {
+                    // Old format: reconstruct activity from stored data
+                    $projectEntityKey = self::createEntityKeyFromArray($activity['project']);
+                    $activity = new Activity(
+                        $activityEntityKey,
+                        $activity['name'],
+                        $activity['desc'] ?? '',
+                        $projectEntityKey,
+                        $activity['alias'] ?? null,
+                        $activity['roleRequired'] ?? false
+                    );
+                } else {
+                    throw new TrackException(
+                        "Invalid array format: 'activity' must have 'key' field and ActivityRepositoryInterface must be provided, " .
+                        "or old format with 'name' and 'project' fields"
+                    );
+                }
+            }
         }
 
         if (!($activity instanceof ActivityInterface)) {
             throw new TrackException(
-                "Invalid array format: 'activity' must be an array or ActivityInterface"
+                "Invalid array format: 'activity' must be an array with 'key' field or ActivityInterface"
             );
         }
 
-        // Reconstruct Role from array if needed
-        $role = $data['role'] ?? null;
-        if (is_array($role)) {
-            if (!isset($role['id'])) {
+        // Handle role: support both old format (full role object) and new format (only roleId)
+        $roleId = null;
+        if (isset($data['roleId'])) {
+            // New format: only roleId
+            $roleId = is_int($data['roleId']) ? $data['roleId'] : null;
+        } elseif (isset($data['role'])) {
+            // Old format: full role object (for backward compatibility during migration)
+            if (is_array($data['role']) && isset($data['role']['id'])) {
+                $roleId = (int) $data['role']['id'];
+            } elseif ($data['role'] instanceof RoleInterface) {
+                $roleId = $data['role']->id;
+            } elseif ($data['role'] === null) {
+                $roleId = null;
+            } else {
                 throw new TrackException(
-                    "Invalid array format: 'role' must have 'id' key"
+                    "Invalid array format: 'role' must be null, an array with 'id', or RoleInterface"
                 );
             }
-
-            $role = new Role(
-                $role['id'],
-                $role['parentId'] ?? null,
-                $role['name'] ?? '',
-                $role['fullName'] ?? '',
-                $role['type'] ?? '',
-                $role['status'] ?? ''
-            );
-        } elseif ($role !== null && !($role instanceof RoleInterface)) {
-            throw new TrackException(
-                "Invalid array format: 'role' must be an array, null, or RoleInterface"
-            );
         }
+        // If role is not set in data, it defaults to null (for backward compatibility with old data)
 
         // Handle doNotSync property (defaults to false for backward compatibility)
         $doNotSync = isset($data['doNotSync']) ? (bool) $data['doNotSync'] : false;
@@ -150,12 +177,13 @@ class TimesheetFactory
             $data['clientDescription'] ?? null,
             $data['time'],
             $data['date'],
-            $role,
+            $roleId, // Pass roleId (int|null), Timesheet will load Role via repository
             $data['individualAction'] ?? false,
             $data['frameUuids'],
             $data['zebraId'] ?? null,
             $data['updatedAt'] ?? null,
-            $doNotSync
+            $doNotSync,
+            $userRepository
         );
     }
 
@@ -174,7 +202,7 @@ class TimesheetFactory
         array $apiData,
         ActivityRepositoryInterface $activityRepo,
         UserRepositoryInterface $userRepo,
-        UuidInterface|null $uuid = null
+        ?UuidInterface $uuid = null
     ): Timesheet {
         // Generate UUID if not provided
         $timesheetUuid = $uuid ?? Uuid::random();

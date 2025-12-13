@@ -386,7 +386,7 @@ class AggregateCommand extends Command
         $framesByKey = [];
         foreach ($frames as $frame) {
             $projectKey = $frame->activity->projectEntityKey->toString();
-            $activityKey = $frame->activity->entityKey->toString();
+            $activityKey = $frame->activityKey->toString();
             $frameIssueKeys = $frame->issueKeys;
             if (empty($frameIssueKeys)) {
                 $frameIssueKeys = ['(no issue key)'];
@@ -465,7 +465,7 @@ class AggregateCommand extends Command
         // Group key: sorted issue keys JSON + activity key
         $groupFrames = [];
         foreach ($frames as $frame) {
-            $activityKey = $frame->activity->entityKey->toString();
+            $activityKey = $frame->activityKey->toString();
             $frameIssueKeys = $frame->issueKeys;
             if (empty($frameIssueKeys)) {
                 $frameIssueKeys = ['(no issue key)'];
@@ -569,7 +569,7 @@ class AggregateCommand extends Command
      */
     private function isLocalActivity(FrameInterface $frame): bool
     {
-        return $frame->activity->entityKey->source === EntitySource::Local;
+        return $frame->activityKey->source === EntitySource::Local;
     }
 
     /**

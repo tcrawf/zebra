@@ -351,7 +351,8 @@ class ZebraProjectRepository implements ZebraProjectRepositoryInterface
             $activityData['name'],
             $activityData['description'] ?? '',
             $projectEntityKey,
-            $activityData['alias'] ?? null
+            $activityData['alias'] ?? null,
+            $activityData['role_needed'] ?? false
         );
     }
 

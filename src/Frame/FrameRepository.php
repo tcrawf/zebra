@@ -8,9 +8,11 @@ use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use InvalidArgumentException;
 use Tcrawf\Zebra\Activity\ActivityInterface;
+use Tcrawf\Zebra\Activity\ActivityRepositoryInterface;
 use Tcrawf\Zebra\EntityKey\EntitySource;
 use Tcrawf\Zebra\Role\RoleInterface;
 use Tcrawf\Zebra\Timezone\TimezoneFormatter;
+use Tcrawf\Zebra\User\UserRepositoryInterface;
 
 /**
  * Repository for storing and retrieving frames.
@@ -24,10 +26,14 @@ class FrameRepository implements FrameRepositoryInterface
 
     /**
      * @param FrameFileStorageFactoryInterface $storageFactory
+     * @param ActivityRepositoryInterface $activityRepository
+     * @param UserRepositoryInterface $userRepository
      * @param string $storageFilename The storage filename (defaults to 'frames.json')
      */
     public function __construct(
         private readonly FrameFileStorageFactoryInterface $storageFactory,
+        private readonly ActivityRepositoryInterface $activityRepository,
+        private readonly UserRepositoryInterface $userRepository,
         string $storageFilename = self::DEFAULT_STORAGE_FILENAME
     ) {
         $this->storageFilename = $storageFilename;
@@ -71,7 +77,7 @@ class FrameRepository implements FrameRepositoryInterface
 
         foreach ($framesData as $frameData) {
             try {
-                $frames[] = FrameFactory::fromArray($frameData);
+                $frames[] = FrameFactory::fromArray($frameData, $this->activityRepository, $this->userRepository);
             } catch (\Exception $e) {
                 // Skip frames that cannot be deserialized
                 continue;
@@ -96,7 +102,7 @@ class FrameRepository implements FrameRepositoryInterface
         }
 
         try {
-            return FrameFactory::fromArray($framesData[$uuid]);
+            return FrameFactory::fromArray($framesData[$uuid], $this->activityRepository, $this->userRepository);
         } catch (\Exception $e) {
             return null;
         }
@@ -407,7 +413,7 @@ class FrameRepository implements FrameRepositoryInterface
         }
 
         try {
-            return FrameFactory::fromArray($data);
+            return FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
         } catch (\Exception $e) {
             return null;
         }
@@ -447,7 +453,7 @@ class FrameRepository implements FrameRepositoryInterface
         }
 
         // Create a completed version of the frame
-        $completedFrame = FrameFactory::withStopTime($currentFrame, $stop);
+        $completedFrame = FrameFactory::withStopTime($currentFrame, $stop, $this->activityRepository, $this->userRepository);
 
         // Save the completed frame permanently
         $this->save($completedFrame);
@@ -553,7 +559,7 @@ class FrameRepository implements FrameRepositoryInterface
         // Filter frames by activity entityKey, only including completed frames (not active)
         // Skip individual frames and frames without roles
         foreach ($allFrames as $frame) {
-            $frameActivityKey = $frame->activity->entityKey;
+            $frameActivityKey = $frame->activityKey;
             $activityKey = $activity->entityKey;
 
             // Compare entityKeys: same source and same ID

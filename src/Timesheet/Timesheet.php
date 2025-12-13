@@ -11,6 +11,7 @@ use Tcrawf\Zebra\Activity\ActivityInterface;
 use Tcrawf\Zebra\EntityKey\EntitySource;
 use Tcrawf\Zebra\Role\RoleInterface;
 use Tcrawf\Zebra\Timezone\TimezoneFormatter;
+use Tcrawf\Zebra\User\UserRepositoryInterface;
 use Tcrawf\Zebra\Uuid\UuidInterface;
 
 /**
@@ -24,6 +25,33 @@ class Timesheet implements TimesheetInterface
     public CarbonInterface $date {
         get {
             return $this->dateValue->copy();
+        }
+    }
+    public int|null $roleId;
+    private ?RoleInterface $roleCache = null;
+    private ?UserRepositoryInterface $userRepository = null;
+    public RoleInterface|null $role {
+        get {
+            // If no role ID, return null
+    if ($this->roleId === null) {
+        return null;
+    }
+
+            // If repository is available, try to load fresh role
+    if ($this->userRepository !== null) {
+        $loadedRole = $this->userRepository->getCurrentUserRoleById($this->roleId);
+        if ($loadedRole !== null) {
+            $this->roleCache = $loadedRole;
+            return $loadedRole;
+        }
+    }
+            // Otherwise return cached role (set during construction)
+    if ($this->roleCache === null) {
+        throw new \RuntimeException(
+            'Role not available. Timesheet was loaded without UserRepository.'
+        );
+    }
+            return $this->roleCache;
         }
     }
     private CarbonInterface $updatedAtValue;
@@ -40,12 +68,13 @@ class Timesheet implements TimesheetInterface
         public string|null $clientDescription,
         public float $time,
         CarbonInterface|int|string $date,
-        public RoleInterface|null $role,
+        RoleInterface|int|null $roleOrId,
         public bool $individualAction,
         public array $frameUuids,
         public int|null $zebraId = null,
         CarbonInterface|int|string|null $updatedAt = null,
-        public bool $doNotSync = false
+        public bool $doNotSync = false,
+        ?UserRepositoryInterface $userRepository = null
     ) {
         // Store UUID hex value
         $this->uuid = $uuid->getHex();
@@ -86,8 +115,36 @@ class Timesheet implements TimesheetInterface
             );
         }
 
+        // Handle role parameter: can be RoleInterface (for new timesheets) or int (role ID for loaded timesheets)
+        if ($roleOrId instanceof RoleInterface) {
+            $this->roleId = $roleOrId->id;
+            $this->roleCache = $roleOrId;
+        } elseif (is_int($roleOrId)) {
+            $this->roleId = $roleOrId;
+            $this->userRepository = $userRepository;
+            // Load role for validation if repository is available
+            if ($userRepository !== null) {
+                $loadedRole = $userRepository->getCurrentUserRoleById($this->roleId);
+                if ($loadedRole !== null) {
+                    $this->roleCache = $loadedRole;
+                }
+            }
+        } else {
+            $this->roleId = null;
+            $this->roleCache = null;
+        }
+
+        // Validate: if activity requires role and not individual action, role must be provided
+        // Check this BEFORE the general role validation so we get the right error message
+        if ($activity->roleRequired && !$individualAction && $this->roleId === null) {
+            throw new InvalidArgumentException(
+                'Activity requires a role. ' .
+                'Either provide a role or mark the timesheet as individual action.'
+            );
+        }
+
         // Validate that either role is set or individualAction is true
-        if ($role === null && !$individualAction) {
+        if ($this->roleId === null && !$individualAction) {
             throw new InvalidArgumentException(
                 'Either role must be set or individualAction must be true'
             );
@@ -191,33 +248,21 @@ class Timesheet implements TimesheetInterface
 
     public function toArray(): array
     {
+        // Normalized storage format: only store activity key and role ID
+        // Project ID is derived from activity, so no need to store it separately
         return [
             'uuid' => $this->uuid,
-            'projectId' => $this->getProjectId(),
             'activity' => [
                 'key' => [
                     'source' => $this->activity->entityKey->source->value,
                     'id' => $this->activity->entityKey->toString(),
                 ],
-                'name' => $this->activity->name,
-                'desc' => $this->activity->description,
-                'project' => [
-                    'source' => $this->activity->projectEntityKey->source->value,
-                    'id' => $this->activity->projectEntityKey->toString(),
-                ],
-                'alias' => $this->activity->alias,
             ],
             'description' => $this->description,
             'clientDescription' => $this->clientDescription,
             'time' => $this->time,
             'date' => $this->dateValue->setTimezone('Europe/Zurich')->format('Y-m-d'),
-            'role' => $this->role !== null ? [
-                'id' => $this->role->id,
-                'name' => $this->role->name,
-                'fullName' => $this->role->fullName,
-                'type' => $this->role->type,
-                'status' => $this->role->status,
-            ] : null,
+            'roleId' => $this->roleId,
             'individualAction' => $this->individualAction,
             'frameUuids' => $this->frameUuids,
             'zebraId' => $this->zebraId,

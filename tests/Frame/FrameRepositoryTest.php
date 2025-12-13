@@ -9,6 +9,7 @@ use InvalidArgumentException;
 use PHPUnit\Framework\MockObject\MockObject;
 use RuntimeException;
 use Tcrawf\Zebra\Activity\Activity;
+use Tcrawf\Zebra\Activity\ActivityRepositoryInterface;
 use Tcrawf\Zebra\EntityKey\EntityKey;
 use Tcrawf\Zebra\FileStorage\FileStorageInterface;
 use Tcrawf\Zebra\Frame\FrameFileStorageFactoryInterface;
@@ -16,12 +17,15 @@ use Tcrawf\Zebra\Frame\FrameRepository;
 use Tcrawf\Zebra\Role\Role;
 use Tcrawf\Zebra\Tests\Helper\RepositoryTestCase;
 use Tcrawf\Zebra\Tests\Helper\TestEntityFactory;
+use Tcrawf\Zebra\User\UserRepositoryInterface;
 use Tcrawf\Zebra\Uuid\Uuid;
 
 class FrameRepositoryTest extends RepositoryTestCase
 {
     private FrameFileStorageFactoryInterface&MockObject $storageFactory;
     private FileStorageInterface&MockObject $storage;
+    private ActivityRepositoryInterface&MockObject $activityRepository;
+    private UserRepositoryInterface&MockObject $userRepository;
     private FrameRepository $repository;
     private Activity $activity;
     private Role $role;
@@ -39,9 +43,76 @@ class FrameRepositoryTest extends RepositoryTestCase
                 return $this->storage;
             });
 
-        $this->repository = new FrameRepository($this->storageFactory, 'test_frames.json');
         $this->activity = TestEntityFactory::createActivity();
         $this->role = TestEntityFactory::createRole();
+
+        // Create mock ActivityRepository
+        $this->activityRepository = $this->createMock(ActivityRepositoryInterface::class);
+        $this->activityRepository->method('get')
+            ->willReturnCallback(function ($entityKey) {
+                // For zebra activities, always create activities based on ID
+                // This ensures tests that create activities with specific names get the right activity
+                if ($entityKey->source->value === 'zebra') {
+                    // Handle both int and string IDs
+                    $activityId = is_int($entityKey->id) ? $entityKey->id : (int) $entityKey->id;
+                    // Use project key based on activity ID pattern: activity 1 -> project 100, activity 2 -> project 200, etc.
+                    // This matches the test pattern where activities have different project IDs
+                    $projectId = $activityId * 100;
+                    $projectKey = EntityKey::zebra($projectId);
+                    // Only return default activity if it's the exact same EntityKey instance AND it's zebra(1)
+                    // Otherwise create a new activity with the expected name
+                    if ($activityId === 1 && $entityKey->toString() === $this->activity->entityKey->toString()) {
+                        // Check if default activity name matches expected pattern
+                        // If not, create new activity with proper name
+                        if ($this->activity->name === 'Test Activity') {
+                            // For tests that expect "Activity 1", create it
+                            // But first check if we should return default
+                            return TestEntityFactory::createActivity(
+                                $entityKey,
+                                "Activity {$activityId}",
+                                '',
+                                $projectKey
+                            );
+                        }
+                        return $this->activity;
+                    }
+                    return TestEntityFactory::createActivity(
+                        $entityKey,
+                        "Activity {$activityId}",
+                        '',
+                        $projectKey
+                    );
+                }
+                // For local activities, return default if it matches
+                if (
+                    $entityKey->source === $this->activity->entityKey->source
+                    && $entityKey->toString() === $this->activity->entityKey->toString()
+                ) {
+                    return $this->activity;
+                }
+                return null;
+            });
+
+        // Create mock UserRepository
+        $this->userRepository = $this->createMock(UserRepositoryInterface::class);
+        $this->userRepository->method('getCurrentUserRoleById')
+            ->willReturnCallback(function ($roleId) {
+                // Return role if it matches our test role
+                if ($roleId === $this->role->id) {
+                    return $this->role;
+                }
+                // For other role IDs, create a basic role (for tests that use multiple roles)
+                // Use TestEntityFactory to create roles with proper names based on ID
+                $roleNames = [
+                    1 => 'Developer',
+                    2 => 'Manager',
+                    3 => 'Tester',
+                ];
+                $name = $roleNames[$roleId] ?? "Role {$roleId}";
+                return TestEntityFactory::createRole($roleId, null, $name);
+            });
+
+        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
     }
 
     public function testSave(): void
@@ -339,7 +410,7 @@ class FrameRepositoryTest extends RepositoryTestCase
                 return isset($data['uuid']) && $data['uuid'] === $uuid->getHex();
             }));
 
-        $this->repository = new FrameRepository($this->storageFactory, 'test_frames.json');
+        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
         $this->repository->saveCurrent($frame);
     }
 
@@ -390,7 +461,7 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('read')
             ->willReturn($frame->toArray());
 
-        $this->repository = new FrameRepository($this->storageFactory, 'test_frames.json');
+        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
         $result = $this->repository->getCurrent();
 
         $this->assertNotNull($result);
@@ -412,7 +483,7 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('exists')
             ->willReturn(false);
 
-        $this->repository = new FrameRepository($this->storageFactory, 'test_frames.json');
+        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
         $result = $this->repository->getCurrent();
 
         $this->assertNull($result);
@@ -463,7 +534,7 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('write')
             ->with([]);
 
-        $this->repository = new FrameRepository($this->storageFactory, 'test_frames.json');
+        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
         $completed = $this->repository->completeCurrent();
 
         $this->assertFalse($completed->isActive());
@@ -486,7 +557,7 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('exists')
             ->willReturn(false);
 
-        $this->repository = new FrameRepository($this->storageFactory, 'test_frames.json');
+        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('No current frame exists to complete');
 
@@ -513,7 +584,7 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('write')
             ->with([]);
 
-        $this->repository = new FrameRepository($this->storageFactory, 'test_frames.json');
+        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
         $this->repository->clearCurrent();
     }
 
@@ -1284,7 +1355,7 @@ class FrameRepositoryTest extends RepositoryTestCase
                 return isset($data['uuid']) && $data['uuid'] === $uuid->getHex();
             }));
 
-        $this->repository = new FrameRepository($this->storageFactory, 'test_frames.json');
+        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
         $this->repository->update($updatedFrame);
     }
 
@@ -1344,7 +1415,7 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('write')
             ->with([]);
 
-        $this->repository = new FrameRepository($this->storageFactory, 'test_frames.json');
+        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
         $this->repository->update($updatedFrame);
     }
 
@@ -1396,7 +1467,7 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('write')
             ->with([]);
 
-        $this->repository = new FrameRepository($this->storageFactory, 'test_frames.json');
+        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
         $this->repository->remove($uuid->getHex());
     }
 
@@ -1407,7 +1478,7 @@ class FrameRepositoryTest extends RepositoryTestCase
         $frame = TestEntityFactory::createActiveFrame($uuid, $futureTime, $this->activity, false, $this->role);
 
         $this->storageFactory = $this->createMock(FrameFileStorageFactoryInterface::class);
-        $this->repository = new FrameRepository($this->storageFactory, 'test_frames.json');
+        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Cannot save a frame with a start datetime later than the current time');
 
@@ -1451,7 +1522,7 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('read')
             ->willReturn($existingFrame->toArray());
 
-        $this->repository = new FrameRepository($this->storageFactory, 'test_frames.json');
+        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Cannot save a current frame: a different current frame already exists');
 
@@ -1487,7 +1558,7 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('read')
             ->willReturn($currentFrame->toArray());
 
-        $this->repository = new FrameRepository($this->storageFactory, 'test_frames.json');
+        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Cannot complete a frame with a stop datetime later than the current time');
 
@@ -1559,7 +1630,7 @@ class FrameRepositoryTest extends RepositoryTestCase
             ->method('read')
             ->willReturn(['invalid' => 'data']);
 
-        $this->repository = new FrameRepository($this->storageFactory, 'test_frames.json');
+        $this->repository = new FrameRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_frames.json');
         $result = $this->repository->getCurrent();
 
         $this->assertNull($result);

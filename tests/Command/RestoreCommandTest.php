@@ -8,6 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 use Tcrawf\Zebra\Command\RestoreCommand;
+use Tcrawf\Zebra\Config\ConfigFileStorage;
 
 class RestoreCommandTest extends TestCase
 {
@@ -18,7 +19,7 @@ class RestoreCommandTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->command = new RestoreCommand();
+        $this->command = new RestoreCommand(new ConfigFileStorage());
 
         $application = new Application();
         $application->add($this->command);

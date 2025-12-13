@@ -27,6 +27,7 @@ class TestEntityFactory
      * @param string|null $description Optional description (defaults to 'Description')
      * @param EntityKey|null $projectEntityKey Optional project entity key (defaults to Zebra 100)
      * @param string|null $alias Optional alias
+     * @param bool|null $roleRequired Optional roleRequired flag (defaults to false)
      * @return Activity
      */
     public static function createActivity(
@@ -34,14 +35,16 @@ class TestEntityFactory
         ?string $name = null,
         ?string $description = null,
         ?EntityKey $projectEntityKey = null,
-        ?string $alias = null
+        ?string $alias = null,
+        ?bool $roleRequired = null
     ): Activity {
         return new Activity(
             $entityKey ?? EntityKey::zebra(1),
             $name ?? 'Test Activity',
             $description ?? 'Description',
             $projectEntityKey ?? EntityKey::zebra(100),
-            $alias
+            $alias,
+            $roleRequired ?? false
         );
     }
 
@@ -54,6 +57,7 @@ class TestEntityFactory
      * @param EntityKey|null $projectEntityKey Optional project entity key (defaults to random local)
      * @param string|null $alias Optional alias
      * @param EntityKey|null $activityEntityKey Optional activity entity key (if provided, overrides uuid)
+     * @param bool|null $roleRequired Optional roleRequired flag (defaults to false)
      * @return Activity
      */
     public static function createLocalActivity(
@@ -62,7 +66,8 @@ class TestEntityFactory
         ?string $description = null,
         ?EntityKey $projectEntityKey = null,
         ?string $alias = null,
-        ?EntityKey $activityEntityKey = null
+        ?EntityKey $activityEntityKey = null,
+        ?bool $roleRequired = null
     ): Activity {
         $activityUuid = $uuid ?? Uuid::random();
         $projectKey = $projectEntityKey ?? EntityKey::local(Uuid::random());
@@ -73,7 +78,8 @@ class TestEntityFactory
             $name ?? 'Local Activity',
             $description ?? 'Description',
             $projectKey,
-            $alias
+            $alias,
+            $roleRequired ?? false
         );
     }
 

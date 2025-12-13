@@ -210,6 +210,28 @@ class UserRepository implements UserRepositoryInterface
     }
 
     /**
+     * Get a role for the current user by ID.
+     *
+     * @param int $roleId The role ID to find
+     * @return RoleInterface|null
+     */
+    public function getCurrentUserRoleById(int $roleId): ?RoleInterface
+    {
+        $user = $this->getCurrentUser();
+        if ($user === null) {
+            return null;
+        }
+
+        foreach ($user->roles as $role) {
+            if ($role->id === $roleId) {
+                return $role;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Find a user ID by email in the users array.
      *
      * @param array<int, array<string, mixed>> $users

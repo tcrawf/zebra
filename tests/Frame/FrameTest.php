@@ -44,6 +44,7 @@ class FrameTest extends TestCase
         $this->assertEquals($uuid->getHex(), $frame->uuid);
         $this->assertEquals($startTime->timestamp, $frame->getStartTimestamp());
         $this->assertEquals($stopTime->timestamp, $frame->getStopTimestamp());
+        $this->assertEquals($this->activity->entityKey, $frame->activityKey);
         $this->assertEquals($this->activity, $frame->activity);
         $this->assertEquals('Test description', $frame->description);
         $this->assertFalse($frame->isActive());
@@ -143,17 +144,18 @@ class FrameTest extends TestCase
         $this->assertEquals($startTime->timestamp, $array['start']);
         $this->assertEquals($stopTime->timestamp, $array['stop']);
         $this->assertIsArray($array['activity']);
+        // Normalized format: only activity.key, no name/desc/project/alias
         $this->assertIsArray($array['activity']['key']);
+        $this->assertEquals($this->activity->entityKey->source->value, $array['activity']['key']['source']);
         $this->assertEquals($this->activity->entityKey->toString(), $array['activity']['key']['id']);
-        $this->assertEquals($this->activity->name, $array['activity']['name']);
-        $this->assertEquals($this->activity->description, $array['activity']['desc']);
-        $this->assertIsArray($array['activity']['project']);
-        $this->assertEquals($this->activity->projectEntityKey->toString(), $array['activity']['project']['id']);
-        $this->assertEquals($this->activity->alias, $array['activity']['alias']);
+        $this->assertArrayNotHasKey('name', $array['activity']);
+        $this->assertArrayNotHasKey('desc', $array['activity']);
+        $this->assertArrayNotHasKey('project', $array['activity']);
+        $this->assertArrayNotHasKey('alias', $array['activity']);
         $this->assertFalse($array['isIndividual']);
-        $this->assertIsArray($array['role']);
-        $this->assertEquals($this->role->id, $array['role']['id']);
-        $this->assertEquals($this->role->name, $array['role']['name']);
+        // New format: only roleId, no full role object
+        $this->assertEquals($this->role->id, $array['roleId']);
+        $this->assertArrayNotHasKey('role', $array);
         $this->assertEquals('Description', $array['desc']);
         $this->assertArrayHasKey('updatedAt', $array);
     }
@@ -192,6 +194,65 @@ class FrameTest extends TestCase
         new Frame($uuid, $startTime, null, $this->activity, false, null);
     }
 
+    public function testConstructorWithRoleRequiredActivityAndNoRoleThrowsException(): void
+    {
+        $uuid = Uuid::random();
+        $startTime = Carbon::now();
+        $roleRequiredActivity = new Activity(
+            EntityKey::zebra(2),
+            'Role Required Activity',
+            'Description',
+            EntityKey::zebra(200),
+            null,
+            true // roleRequired = true
+        );
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Activity requires a role');
+
+        new Frame($uuid, $startTime, null, $roleRequiredActivity, false, null);
+    }
+
+    public function testConstructorWithRoleRequiredActivityAndIndividualSucceeds(): void
+    {
+        $uuid = Uuid::random();
+        $startTime = Carbon::now();
+        $roleRequiredActivity = new Activity(
+            EntityKey::zebra(2),
+            'Role Required Activity',
+            'Description',
+            EntityKey::zebra(200),
+            null,
+            true // roleRequired = true
+        );
+
+        // Should succeed because isIndividual = true
+        $frame = new Frame($uuid, $startTime, null, $roleRequiredActivity, true, null);
+
+        $this->assertTrue($frame->isIndividual);
+        $this->assertNull($frame->role);
+    }
+
+    public function testConstructorWithRoleRequiredActivityAndRoleSucceeds(): void
+    {
+        $uuid = Uuid::random();
+        $startTime = Carbon::now();
+        $roleRequiredActivity = new Activity(
+            EntityKey::zebra(2),
+            'Role Required Activity',
+            'Description',
+            EntityKey::zebra(200),
+            null,
+            true // roleRequired = true
+        );
+
+        // Should succeed because role is provided
+        $frame = new Frame($uuid, $startTime, null, $roleRequiredActivity, false, $this->role);
+
+        $this->assertFalse($frame->isIndividual);
+        $this->assertEquals($this->role, $frame->role);
+    }
+
     public function testToArrayWithIndividualFrame(): void
     {
         $uuid = Uuid::random();
@@ -202,7 +263,8 @@ class FrameTest extends TestCase
         $array = $frame->toArray();
 
         $this->assertTrue($array['isIndividual']);
-        $this->assertNull($array['role']);
+        $this->assertNull($array['roleId']); // New format: roleId is null
+        $this->assertArrayNotHasKey('role', $array); // Should not have 'role' key
         $this->assertEquals('Individual description', $array['desc']);
     }
 

@@ -7,7 +7,9 @@ namespace Tcrawf\Zebra\Timesheet;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use InvalidArgumentException;
+use Tcrawf\Zebra\Activity\ActivityRepositoryInterface;
 use Tcrawf\Zebra\Timezone\TimezoneFormatter;
+use Tcrawf\Zebra\User\UserRepositoryInterface;
 
 /**
  * Repository for storing and retrieving local timesheets.
@@ -20,10 +22,14 @@ class LocalTimesheetRepository implements LocalTimesheetRepositoryInterface
 
     /**
      * @param TimesheetFileStorageFactoryInterface $storageFactory
+     * @param ActivityRepositoryInterface $activityRepository
+     * @param UserRepositoryInterface $userRepository
      * @param string $storageFilename The storage filename (defaults to 'timesheets.json')
      */
     public function __construct(
         private readonly TimesheetFileStorageFactoryInterface $storageFactory,
+        private readonly ActivityRepositoryInterface $activityRepository,
+        private readonly UserRepositoryInterface $userRepository,
         string $storageFilename = self::DEFAULT_STORAGE_FILENAME
     ) {
         $this->storageFilename = $storageFilename;
@@ -61,7 +67,7 @@ class LocalTimesheetRepository implements LocalTimesheetRepositoryInterface
 
         foreach ($timesheetsData as $timesheetData) {
             try {
-                $timesheets[] = TimesheetFactory::fromArray($timesheetData);
+                $timesheets[] = TimesheetFactory::fromArray($timesheetData, $this->activityRepository, $this->userRepository);
             } catch (\Exception $e) {
                 // Skip timesheets that cannot be deserialized
                 continue;
@@ -86,7 +92,7 @@ class LocalTimesheetRepository implements LocalTimesheetRepositoryInterface
         }
 
         try {
-            return TimesheetFactory::fromArray($timesheetsData[$uuid]);
+            return TimesheetFactory::fromArray($timesheetsData[$uuid], $this->activityRepository, $this->userRepository);
         } catch (\Exception $e) {
             return null;
         }

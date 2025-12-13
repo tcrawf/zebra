@@ -37,7 +37,7 @@ class ReportService implements ReportServiceInterface
             }
 
             $projectEntityKey = $frame->activity->projectEntityKey;
-            $activityEntityKey = $frame->activity->entityKey;
+            $activityEntityKey = $frame->activityKey;
             $activityName = $frame->activity->name;
 
             // Use entityKey strings as keys
@@ -318,7 +318,7 @@ class ReportService implements ReportServiceInterface
                 continue; // Skip active frames
             }
 
-            $activityEntityKey = $frame->activity->entityKey;
+            $activityEntityKey = $frame->activityKey;
             $activityName = $frame->activity->name;
             $activityKey = $activityEntityKey->toString();
 

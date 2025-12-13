@@ -74,7 +74,7 @@ class EditCommand extends Command
         $localStart = $this->timezoneFormatter->toLocal($frame->startTime);
 
         // Use alias if available, otherwise use ID (user can enter either)
-        $activityIdentifier = $frame->activity->alias ?? $frame->activity->entityKey->toString();
+        $activityIdentifier = $frame->activity->alias ?? $frame->activityKey->toString();
 
         $data = [
             'start' => $localStart->format($dateFormat),
@@ -89,7 +89,7 @@ class EditCommand extends Command
         // Add remaining fields after start/stop
         $data['activity'] = [
             'key' => [
-                'source' => $frame->activity->entityKey->source->value,
+                'source' => $frame->activityKey->source->value,
                 'id' => $activityIdentifier, // Can be alias or ID
             ],
         ];

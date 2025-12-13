@@ -125,6 +125,19 @@ readonly class Track implements TrackInterface
             }
         }
 
+        // Validate: if activity requires role and not individual, role must be provided
+        if ($activity->roleRequired && !$isIndividual && $role === null) {
+            $defaultRole = $this->userRepository->getCurrentUserDefaultRole();
+            if ($defaultRole === null) {
+                throw new \RuntimeException(
+                    'Activity requires a role. ' .
+                    'Either provide a role with --role option or mark the frame as individual with --individual flag. ' .
+                    'No default role found. Please configure user.defaultRole.id in config.json.'
+                );
+            }
+            $role = $defaultRole;
+        }
+
         // Get role (use provided role or default to user's default role, unless individual)
         if (!$isIndividual) {
             if ($role === null) {
@@ -235,6 +248,19 @@ readonly class Track implements TrackInterface
                 "Start time: {$fromTimeLocal->toIso8601String()}, " .
                 "Stop time: {$toTimeLocal->toIso8601String()}"
             );
+        }
+
+        // Validate: if activity requires role and not individual, role must be provided
+        if ($activity->roleRequired && !$isIndividual && $role === null) {
+            $defaultRole = $this->userRepository->getCurrentUserDefaultRole();
+            if ($defaultRole === null) {
+                throw new \RuntimeException(
+                    'Activity requires a role. ' .
+                    'Either provide a role with --role option or mark the frame as individual with --individual flag. ' .
+                    'No default role found. Please configure user.defaultRole.id in config.json.'
+                );
+            }
+            $role = $defaultRole;
         }
 
         // Get role (use provided role or default to user's default role, unless individual)

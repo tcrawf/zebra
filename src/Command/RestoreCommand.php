@@ -11,12 +11,27 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ChoiceQuestion;
+use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Tcrawf\Zebra\Config\ConfigFileStorageInterface;
+use Tcrawf\Zebra\Frame\FrameFileStorageFactory;
+use Tcrawf\Zebra\Frame\FrameMigrationService;
+use Tcrawf\Zebra\Timesheet\TimesheetFileStorageFactory;
+use Tcrawf\Zebra\Timesheet\TimesheetMigrationService;
 use Tcrawf\Zebra\FileStorage\HomeDirectoryTrait;
 
 class RestoreCommand extends Command
 {
     use HomeDirectoryTrait;
+
+    /**
+     * @param ConfigFileStorageInterface $configStorage
+     */
+    public function __construct(
+        private readonly ConfigFileStorageInterface $configStorage
+    ) {
+        parent::__construct();
+    }
 
     private const string FRAMES_FILENAME = 'frames.json';
     private const string TIMESHEETS_FILENAME = 'timesheets.json';
@@ -148,6 +163,89 @@ class RestoreCommand extends Command
             }
 
             $io->success(sprintf('%s restored from backup: %s', ucfirst($type), $backupFilename));
+
+            // Check if frames need migration after restore
+            if ($type === 'frames') {
+                $storageFactory = new FrameFileStorageFactory();
+                $migrationService = new FrameMigrationService($storageFactory);
+
+                if ($migrationService->needsMigration()) {
+                    if ($input->isInteractive()) {
+                        $io->warning('Restored frames use old format.');
+                        $question = new ConfirmationQuestion(
+                            'Migrate now? (yes/no) ',
+                            true
+                        );
+
+                        if ($io->askQuestion($question)) {
+                            // Run migration
+                            $io->info('Migrating frames...');
+                            try {
+                                $migratedCount = $migrationService->migrateFrames();
+                                $this->configStorage->set('frames.migrated', true);
+                                $io->success(sprintf('Successfully migrated %d frame(s).', $migratedCount));
+                            } catch (\Exception $e) {
+                                $io->error(sprintf('Migration failed: %s', $e->getMessage()));
+                                // Don't fail the restore, just warn
+                                $io->warning('Restore completed but migration failed. Run "zebra migrate-frames" to migrate.');
+                            }
+                        } else {
+                            // Set flag to false to trigger migration on next command
+                            $this->configStorage->set('frames.migrated', false);
+                            $io->info('Migration skipped. Frames will be migrated on next command execution.');
+                        }
+                    } else {
+                        // Non-interactive mode: set flag to false to trigger migration on next command
+                        $this->configStorage->set('frames.migrated', false);
+                        $io->warning('Restored frames use old format. Run "zebra migrate-frames" to migrate.');
+                    }
+                } else {
+                    // No migration needed, set flag to true
+                    $this->configStorage->set('frames.migrated', true);
+                }
+            }
+
+            // Check if timesheets need migration after restore
+            if ($type === 'timesheets') {
+                $storageFactory = new TimesheetFileStorageFactory();
+                $migrationService = new TimesheetMigrationService($storageFactory);
+
+                if ($migrationService->needsMigration()) {
+                    if ($input->isInteractive()) {
+                        $io->warning('Restored timesheets use old format.');
+                        $question = new ConfirmationQuestion(
+                            'Migrate now? (yes/no) ',
+                            true
+                        );
+
+                        if ($io->askQuestion($question)) {
+                            // Run migration
+                            $io->info('Migrating timesheets...');
+                            try {
+                                $migratedCount = $migrationService->migrateTimesheets();
+                                $this->configStorage->set('timesheets.migrated', true);
+                                $io->success(sprintf('Successfully migrated %d timesheet(s).', $migratedCount));
+                            } catch (\Exception $e) {
+                                $io->error(sprintf('Migration failed: %s', $e->getMessage()));
+                                // Don't fail the restore, just warn
+                                $io->warning('Restore completed but migration failed. Run "zebra migrate-timesheets" to migrate.');
+                            }
+                        } else {
+                            // Set flag to false to trigger migration on next command
+                            $this->configStorage->set('timesheets.migrated', false);
+                            $io->info('Migration skipped. Timesheets will be migrated on next command execution.');
+                        }
+                    } else {
+                        // Non-interactive mode: set flag to false to trigger migration on next command
+                        $this->configStorage->set('timesheets.migrated', false);
+                        $io->warning('Restored timesheets use old format. Run "zebra migrate-timesheets" to migrate.');
+                    }
+                } else {
+                    // No migration needed, set flag to true
+                    $this->configStorage->set('timesheets.migrated', true);
+                }
+            }
+
             return Command::SUCCESS;
         } catch (\Exception $e) {
             $io->error(sprintf('Restore failed: %s', $e->getMessage()));

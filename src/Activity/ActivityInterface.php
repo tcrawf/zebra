@@ -31,4 +31,8 @@ interface ActivityInterface
     public string|null $alias {
         get;
     }
+
+    public bool $roleRequired {
+        get;
+    }
 }

@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Tcrawf\Zebra\Frame;
 
 use Carbon\CarbonInterface;
-use Tcrawf\Zebra\Activity\Activity;
+use Tcrawf\Zebra\Activity\ActivityInterface;
+use Tcrawf\Zebra\EntityKey\EntityKeyInterface;
 use Tcrawf\Zebra\Role\RoleInterface;
 
 /**
@@ -42,7 +43,11 @@ interface FrameInterface
      */
     public function getStopTimestamp(): int|null;
 
-    public Activity $activity {
+    public EntityKeyInterface $activityKey {
+        get;
+    }
+
+    public ActivityInterface $activity {
         get;
     }
 

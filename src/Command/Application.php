@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace Tcrawf\Zebra\Command;
 
 use Symfony\Component\Console\Application as SymfonyApplication;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Question\ConfirmationQuestion;
+use Symfony\Component\Console\Style\SymfonyStyle;
 use Tcrawf\Zebra\Activity\ActivityRepository;
 use Tcrawf\Zebra\Activity\LocalActivityRepository;
 use Tcrawf\Zebra\Activity\ZebraActivityRepository;
@@ -23,6 +26,7 @@ use Tcrawf\Zebra\Command\Autocompletion\TimesheetAutocompletion;
 use Tcrawf\Zebra\Config\ConfigFileStorage;
 use Tcrawf\Zebra\Config\ConfigFileStorageInterface;
 use Tcrawf\Zebra\Frame\FrameFileStorageFactory;
+use Tcrawf\Zebra\Frame\FrameMigrationService;
 use Tcrawf\Zebra\Frame\FrameRepository;
 use Tcrawf\Zebra\Project\LocalProjectRepository;
 use Tcrawf\Zebra\Project\ProjectApiService;
@@ -36,6 +40,7 @@ use Tcrawf\Zebra\Timesheet\LocalTimesheetRepository;
 use Tcrawf\Zebra\Timesheet\LocalTimesheetRepositoryInterface;
 use Tcrawf\Zebra\Timesheet\TimesheetApiService;
 use Tcrawf\Zebra\Timesheet\TimesheetFileStorageFactory;
+use Tcrawf\Zebra\Timesheet\TimesheetMigrationService;
 use Tcrawf\Zebra\Timesheet\TimesheetSyncService;
 use Tcrawf\Zebra\Timesheet\TimesheetSyncServiceInterface;
 use Tcrawf\Zebra\Timesheet\ZebraTimesheetRepository;
@@ -92,9 +97,6 @@ class Application extends SymfonyApplication
         $this->userApiService = new UserApiService($client);
         $this->userRepository = new UserRepository($this->userApiService, $cacheFactory, $this->configStorage);
 
-        $frameStorageFactory = new FrameFileStorageFactory();
-        $this->frameRepository = new FrameRepository($frameStorageFactory);
-
         // Initialize project repositories
         $this->projectApiService = new ProjectApiService($client);
         $this->zebraProjectRepository = new ZebraProjectRepository($this->projectApiService, $cacheFactory);
@@ -102,9 +104,15 @@ class Application extends SymfonyApplication
         $this->projectRepository = new ProjectRepository($localProjectRepository, $this->zebraProjectRepository);
 
         // Initialize activity repositories
+        // Note: LocalActivityRepository is created with null FrameRepository to avoid circular dependency
+        // LocalActivityRepository.getFrames() will return empty array if FrameRepository is null (handled gracefully)
         $zebraActivityRepository = new ZebraActivityRepository($this->zebraProjectRepository);
-        $localActivityRepository = new LocalActivityRepository($localProjectRepository, $this->frameRepository);
+        $localActivityRepository = new LocalActivityRepository($localProjectRepository, null);
         $this->activityRepository = new ActivityRepository($localActivityRepository, $zebraActivityRepository);
+
+        // Initialize frame repository with activity repository and user repository
+        $frameStorageFactory = new FrameFileStorageFactory();
+        $this->frameRepository = new FrameRepository($frameStorageFactory, $this->activityRepository, $this->userRepository);
 
         $this->timezoneFormatter = new TimezoneFormatter();
         $this->reportService = new ReportService($this->projectRepository, $this->timezoneFormatter);
@@ -130,7 +138,7 @@ class Application extends SymfonyApplication
 
         // Initialize timesheet repositories
         $timesheetStorageFactory = new TimesheetFileStorageFactory();
-        $this->timesheetRepository = new LocalTimesheetRepository($timesheetStorageFactory);
+        $this->timesheetRepository = new LocalTimesheetRepository($timesheetStorageFactory, $this->activityRepository, $this->userRepository);
         $timesheetApiService = new TimesheetApiService($client);
         $this->zebraTimesheetRepository = new ZebraTimesheetRepository(
             $timesheetApiService,
@@ -248,8 +256,10 @@ class Application extends SymfonyApplication
         $this->addCommand(new UserCommand($this->userRepository, $this->configStorage));
         $this->addCommand(new RolesCommand($this->userRepository));
         $this->addCommand($this->backupCommand);
-        $this->addCommand(new RestoreCommand());
+        $this->addCommand(new RestoreCommand($this->configStorage));
         $this->addCommand(new DeleteBackupCommand());
+        $this->addCommand(new MigrateFramesCommand($this->configStorage));
+        $this->addCommand(new MigrateTimesheetsCommand($this->configStorage));
         $this->addCommand(
             new RefreshCommand(
                 $this->userRepository,
@@ -360,6 +370,97 @@ class Application extends SymfonyApplication
     {
         // Get the command name being executed
         $commandName = $input->getFirstArgument();
+
+        // Check for frame migration if needed
+        // Always check if migration is needed, regardless of flag (in case data was restored or flag is incorrect)
+        $skipMigrationCheck = in_array($commandName, ['migrate-frames', 'migrate-timesheets', 'list', 'help', 'install'], true);
+        if (!$skipMigrationCheck) {
+            $storageFactory = new FrameFileStorageFactory();
+            $migrationService = new FrameMigrationService($storageFactory);
+
+            if ($migrationService->needsMigration()) {
+                if (!$input->isInteractive()) {
+                    // Non-interactive mode: log warning and exit
+                    $output->writeln(
+                        '<error>Frames need to be migrated to new format. ' .
+                        'Run "zebra migrate-frames" to migrate.</error>'
+                    );
+                    return Command::FAILURE;
+                }
+
+                // Interactive mode: prompt user
+                $io = new SymfonyStyle($input, $output);
+                $io->warning('Frames need to be migrated to new format.');
+                $question = new ConfirmationQuestion(
+                    'Migrate now? (yes/no) ',
+                    true
+                );
+
+                if ($io->askQuestion($question)) {
+                    // Run migration
+                    $io->info('Migrating frames...');
+                    try {
+                        $migratedCount = $migrationService->migrateFrames();
+                        $this->configStorage->set('frames.migrated', true);
+                        $io->success(sprintf('Successfully migrated %d frame(s).', $migratedCount));
+                    } catch (\Exception $e) {
+                        $io->error(sprintf('Migration failed: %s', $e->getMessage()));
+                        return Command::FAILURE;
+                    }
+                } else {
+                    $io->error('Migration required. Run "zebra migrate-frames" to migrate.');
+                    return Command::FAILURE;
+                }
+            } else {
+                // No migration needed, set flag to true
+                $this->configStorage->set('frames.migrated', true);
+            }
+
+            // Check for timesheet migration if needed
+            // Always check if migration is needed, regardless of flag (in case data was restored or flag is incorrect)
+            $timesheetStorageFactory = new TimesheetFileStorageFactory();
+            $timesheetMigrationService = new TimesheetMigrationService($timesheetStorageFactory);
+
+            if ($timesheetMigrationService->needsMigration()) {
+                if (!$input->isInteractive()) {
+                    // Non-interactive mode: log warning and exit
+                    $output->writeln(
+                        '<error>Timesheets need to be migrated to new format. ' .
+                        'Run "zebra migrate-timesheets" to migrate.</error>'
+                    );
+                    return Command::FAILURE;
+                }
+
+                // Interactive mode: prompt user
+                if (!isset($io)) {
+                    $io = new SymfonyStyle($input, $output);
+                }
+                $io->warning('Timesheets need to be migrated to new format.');
+                $question = new ConfirmationQuestion(
+                    'Migrate now? (yes/no) ',
+                    true
+                );
+
+                if ($io->askQuestion($question)) {
+                    // Run migration
+                    $io->info('Migrating timesheets...');
+                    try {
+                        $migratedCount = $timesheetMigrationService->migrateTimesheets();
+                        $this->configStorage->set('timesheets.migrated', true);
+                        $io->success(sprintf('Successfully migrated %d timesheet(s).', $migratedCount));
+                    } catch (\Exception $e) {
+                        $io->error(sprintf('Migration failed: %s', $e->getMessage()));
+                        return Command::FAILURE;
+                    }
+                } else {
+                    $io->error('Migration required. Run "zebra migrate-timesheets" to migrate.');
+                    return Command::FAILURE;
+                }
+            } else {
+                // No migration needed, set flag to true
+                $this->configStorage->set('timesheets.migrated', true);
+            }
+        }
 
         // Skip auto-backup if:
         // 1. No command specified (showing help/list)

@@ -530,7 +530,8 @@ class LocalProjectRepository implements LocalProjectRepositoryInterface
             $activityData['name'],
             $activityData['description'] ?? '',
             $projectEntityKey,
-            $activityData['alias'] ?? null
+            $activityData['alias'] ?? null,
+            false // Local activities don't store roleRequired, default to false
         );
     }
 }

@@ -96,7 +96,7 @@ class TimesheetListCommand extends Command
         $zebraFrames = array_filter(
             $frames,
             static fn($frame) => !$frame->isActive()
-                && $frame->activity->entityKey->source === EntitySource::Zebra
+                && $frame->activityKey->source === EntitySource::Zebra
         );
 
         // Calculate total frame duration in seconds (not rounded)
@@ -332,7 +332,7 @@ class TimesheetListCommand extends Command
             }
 
             // Must have same activity
-            if ($frame->activity->entityKey->toString() !== $timesheet->activity->entityKey->toString()) {
+            if ($frame->activityKey->toString() !== $timesheet->activity->entityKey->toString()) {
                 continue;
             }
 

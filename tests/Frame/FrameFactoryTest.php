@@ -5,19 +5,24 @@ declare(strict_types=1);
 namespace Tcrawf\Zebra\Tests\Frame;
 
 use Carbon\Carbon;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Tcrawf\Zebra\Activity\Activity;
+use Tcrawf\Zebra\Activity\ActivityRepositoryInterface;
 use Tcrawf\Zebra\EntityKey\EntityKey;
 use Tcrawf\Zebra\Frame\Frame;
 use Tcrawf\Zebra\Frame\FrameFactory;
 use Tcrawf\Zebra\Role\Role;
 use Tcrawf\Zebra\Timezone\TimezoneFormatter;
+use Tcrawf\Zebra\User\UserRepositoryInterface;
 use Tcrawf\Zebra\Uuid\Uuid;
 
 class FrameFactoryTest extends TestCase
 {
     private Activity $activity;
     private Role $role;
+    private ActivityRepositoryInterface&MockObject $activityRepository;
+    private UserRepositoryInterface&MockObject $userRepository;
 
     protected function setUp(): void
     {
@@ -25,6 +30,18 @@ class FrameFactoryTest extends TestCase
         $projectEntityKey = EntityKey::zebra(100);
         $this->activity = new Activity($activityEntityKey, 'Test Activity', 'Description', $projectEntityKey);
         $this->role = new Role(1, null, 'Developer');
+
+        // Create mock ActivityRepository that returns our test activity
+        $this->activityRepository = $this->createMock(ActivityRepositoryInterface::class);
+        $this->activityRepository->method('get')
+            ->with($this->activity->entityKey)
+            ->willReturn($this->activity);
+
+        // Create mock UserRepository that returns our test role
+        $this->userRepository = $this->createMock(UserRepositoryInterface::class);
+        $this->userRepository->method('getCurrentUserRoleById')
+            ->with($this->role->id)
+            ->willReturn($this->role);
     }
 
     public function testCreate(): void
@@ -65,16 +82,19 @@ class FrameFactoryTest extends TestCase
             'uuid' => $uuid->getHex(),
             'start' => $startTimestamp,
             'stop' => $stopTimestamp,
-            'activity' => $this->activity,
-            false,
-
+            'activity' => [
+                'key' => [
+                    'source' => $this->activity->entityKey->source->value,
+                    'id' => $this->activity->entityKey->toString(),
+                ],
+            ],
             'isIndividual' => false,
-            'role' => $this->role,
+            'roleId' => $this->role->id, // New format: only roleId
             'desc' => 'Test description',
             'updatedAt' => $startTimestamp
         ];
 
-        $frame = FrameFactory::fromArray($data);
+        $frame = FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
 
         $this->assertEquals($uuid->getHex(), $frame->uuid);
         $this->assertEquals($startTimestamp, $frame->getStartTimestamp());
@@ -89,16 +109,19 @@ class FrameFactoryTest extends TestCase
             'uuid' => $uuidString,
             'start' => time() - 3600,
             'stop' => time(),
-            'activity' => $this->activity,
-            false,
-
+            'activity' => [
+                'key' => [
+                    'source' => $this->activity->entityKey->source->value,
+                    'id' => $this->activity->entityKey->toString(),
+                ],
+            ],
             'isIndividual' => false,
-            'role' => $this->role,
+            'roleId' => $this->role->id,
             'desc' => '',
             'updatedAt' => time()
         ];
 
-        $frame = FrameFactory::fromArray($data);
+        $frame = FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
 
         $this->assertEquals($uuidString, $frame->uuid);
     }
@@ -117,6 +140,7 @@ class FrameFactoryTest extends TestCase
                     'source' => $this->activity->entityKey->source->value,
                     'id' => $this->activity->entityKey->toString(),
                 ],
+                // Old format also includes name, desc, project, alias (for backward compatibility test)
                 'name' => $this->activity->name,
                 'desc' => $this->activity->description,
                 'project' => [
@@ -134,9 +158,10 @@ class FrameFactoryTest extends TestCase
             'updatedAt' => $startTimestamp
         ];
 
-        $frame = FrameFactory::fromArray($data);
+        $frame = FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
 
         $this->assertEquals($uuid->getHex(), $frame->uuid);
+        $this->assertEquals($this->role->id, $frame->roleId);
         $this->assertEquals($this->role->id, $frame->role->id);
         $this->assertEquals($this->role->name, $frame->role->name);
     }
@@ -156,7 +181,7 @@ class FrameFactoryTest extends TestCase
         );
 
         $stopTime = Carbon::now();
-        $completedFrame = FrameFactory::withStopTime($frame, $stopTime);
+        $completedFrame = FrameFactory::withStopTime($frame, $stopTime, $this->activityRepository, $this->userRepository);
 
         $this->assertNotSame($frame, $completedFrame);
         $this->assertFalse($completedFrame->isActive());
@@ -179,7 +204,7 @@ class FrameFactoryTest extends TestCase
         );
 
         $stopTimestamp = time();
-        $completedFrame = FrameFactory::withStopTime($frame, $stopTimestamp);
+        $completedFrame = FrameFactory::withStopTime($frame, $stopTimestamp, $this->activityRepository);
 
         $this->assertEquals($stopTimestamp, $completedFrame->getStopTimestamp());
     }
@@ -199,7 +224,7 @@ class FrameFactoryTest extends TestCase
         );
 
         $stopTime = '2024-01-01 12:00:00';
-        $completedFrame = FrameFactory::withStopTime($frame, $stopTime);
+        $completedFrame = FrameFactory::withStopTime($frame, $stopTime, $this->activityRepository, $this->userRepository);
 
         $expectedTimestamp = $timezoneFormatter->parseLocalToUtc($stopTime)->timestamp;
         $this->assertEquals($expectedTimestamp, $completedFrame->getStopTimestamp());
@@ -225,16 +250,19 @@ class FrameFactoryTest extends TestCase
             'uuid' => $uuid->getHex(),
             'start' => $startTimestamp,
             'stop' => $stopTimestamp,
-            'activity' => $this->activity,
-            false,
-
+            'activity' => [
+                'key' => [
+                    'source' => $this->activity->entityKey->source->value,
+                    'id' => $this->activity->entityKey->toString(),
+                ],
+            ],
             'isIndividual' => true,
-            'role' => null,
+            'roleId' => null, // New format: roleId is null for individual frames
             'desc' => 'Individual description',
             'updatedAt' => $startTimestamp
         ];
 
-        $frame = FrameFactory::fromArray($data);
+        $frame = FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
 
         $this->assertEquals($uuid->getHex(), $frame->uuid);
         $this->assertTrue($frame->isIndividual);
@@ -259,7 +287,7 @@ class FrameFactoryTest extends TestCase
         $this->expectException(\Tcrawf\Zebra\Exception\TrackException::class);
         $this->expectExceptionMessage("Invalid array format: 'isIndividual' key is required");
 
-        FrameFactory::fromArray($data);
+        FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
     }
 
     public function testFromArrayThrowsExceptionIfUuidMissing(): void
@@ -277,7 +305,7 @@ class FrameFactoryTest extends TestCase
         $this->expectException(\Tcrawf\Zebra\Exception\TrackException::class);
         $this->expectExceptionMessage("Invalid array format: 'uuid' key is required");
 
-        FrameFactory::fromArray($data);
+        FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
     }
 
     public function testFromArrayThrowsExceptionIfActivityMissingKey(): void
@@ -298,9 +326,9 @@ class FrameFactoryTest extends TestCase
         ];
 
         $this->expectException(\Tcrawf\Zebra\Exception\TrackException::class);
-        $this->expectExceptionMessage("Invalid array format: 'activity' must have 'key' and 'project' keys");
+        $this->expectExceptionMessage("Invalid array format: 'activity' must have 'key' field");
 
-        FrameFactory::fromArray($data);
+        FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
     }
 
     public function testFromArrayWithUpdatedAt(): void
@@ -313,14 +341,19 @@ class FrameFactoryTest extends TestCase
             'uuid' => $uuid->getHex(),
             'start' => $startTimestamp,
             'stop' => $stopTimestamp,
-            'activity' => $this->activity,
+            'activity' => [
+                'key' => [
+                    'source' => $this->activity->entityKey->source->value,
+                    'id' => $this->activity->entityKey->toString(),
+                ],
+            ],
             'isIndividual' => false,
-            'role' => $this->role,
+            'roleId' => $this->role->id,
             'desc' => 'Test description',
             'updatedAt' => $updatedAtTimestamp
         ];
 
-        $frame = FrameFactory::fromArray($data);
+        $frame = FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
 
         $this->assertEquals($updatedAtTimestamp, $frame->getUpdatedAtTimestamp());
     }
@@ -364,14 +397,19 @@ class FrameFactoryTest extends TestCase
             'uuid' => $uuid->getHex(),
             'start' => time() - 3600,
             'stop' => time(),
-            'activity' => $this->activity,
+            'activity' => [
+                'key' => [
+                    'source' => $this->activity->entityKey->source->value,
+                    'id' => $this->activity->entityKey->toString(),
+                ],
+            ],
             'isIndividual' => true,
-            'role' => null,
+            'roleId' => null, // New format: roleId is null for individual frames
             'desc' => 'Test',
             'updatedAt' => time()
         ];
 
-        $frame = FrameFactory::fromArray($data);
+        $frame = FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
 
         $this->assertNull($frame->role);
         $this->assertTrue($frame->isIndividual);
@@ -384,15 +422,21 @@ class FrameFactoryTest extends TestCase
             'uuid' => $uuid->getHex(),
             'start' => time() - 3600,
             'stop' => time(),
-            'activity' => $this->activity,
+            'activity' => [
+                'key' => [
+                    'source' => $this->activity->entityKey->source->value,
+                    'id' => $this->activity->entityKey->toString(),
+                ],
+            ],
             'isIndividual' => false,
-            'role' => $this->role,
+            'roleId' => $this->role->id, // New format: only roleId
             'desc' => 'Test',
             'updatedAt' => time()
         ];
 
-        $frame = FrameFactory::fromArray($data);
+        $frame = FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
 
+        $this->assertEquals($this->role->id, $frame->roleId);
         $this->assertEquals($this->role, $frame->role);
     }
 
@@ -403,7 +447,12 @@ class FrameFactoryTest extends TestCase
             'uuid' => $uuid->getHex(),
             'start' => time() - 3600,
             'stop' => time(),
-            'activity' => $this->activity,
+            'activity' => [
+                'key' => [
+                    'source' => $this->activity->entityKey->source->value,
+                    'id' => $this->activity->entityKey->toString(),
+                ],
+            ],
             'isIndividual' => false,
             'role' => 'invalid', // Invalid type
             'desc' => 'Test',
@@ -411,8 +460,80 @@ class FrameFactoryTest extends TestCase
         ];
 
         $this->expectException(\Tcrawf\Zebra\Exception\TrackException::class);
-        $this->expectExceptionMessage("Invalid array format: 'role' must be null, an array, or RoleInterface");
+        $this->expectExceptionMessage("Invalid array format: 'role' must be null, an array with 'id', or RoleInterface");
 
-        FrameFactory::fromArray($data);
+        FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
+    }
+
+    public function testFromArrayWithNewFormat(): void
+    {
+        $uuid = Uuid::random();
+        $startTimestamp = time() - 3600;
+        $stopTimestamp = time();
+        $data = [
+            'uuid' => $uuid->getHex(),
+            'start' => $startTimestamp,
+            'stop' => $stopTimestamp,
+            'activity' => [
+                'key' => [
+                    'source' => $this->activity->entityKey->source->value,
+                    'id' => $this->activity->entityKey->toString(),
+                ],
+                // New format: only key, no name/desc/project/alias
+            ],
+            'isIndividual' => false,
+            'roleId' => $this->role->id, // New format: only roleId
+            'desc' => 'Test description',
+            'updatedAt' => $startTimestamp
+        ];
+
+        $frame = FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
+
+        $this->assertEquals($uuid->getHex(), $frame->uuid);
+        $this->assertEquals($this->activity->entityKey, $frame->activityKey);
+        $this->assertEquals($this->activity, $frame->activity);
+        $this->assertEquals($this->role->id, $frame->roleId);
+        $this->assertEquals($this->role->id, $frame->role->id);
+    }
+
+    public function testFromArrayWithOldFormatBackwardCompatibility(): void
+    {
+        $uuid = Uuid::random();
+        $startTimestamp = time() - 3600;
+        $stopTimestamp = time();
+        $data = [
+            'uuid' => $uuid->getHex(),
+            'start' => $startTimestamp,
+            'stop' => $stopTimestamp,
+            'activity' => [
+                'key' => [
+                    'source' => $this->activity->entityKey->source->value,
+                    'id' => $this->activity->entityKey->toString(),
+                ],
+                // Old format: includes name, desc, project, alias
+                'name' => $this->activity->name,
+                'desc' => $this->activity->description,
+                'project' => [
+                    'source' => $this->activity->projectEntityKey->source->value,
+                    'id' => $this->activity->projectEntityKey->toString(),
+                ],
+                'alias' => $this->activity->alias,
+            ],
+            'isIndividual' => false,
+            'role' => [
+                'id' => $this->role->id,
+                'name' => $this->role->name,
+            ],
+            'desc' => 'Test description',
+            'updatedAt' => $startTimestamp
+        ];
+
+        // Should work with old format (backward compatibility during migration)
+        $frame = FrameFactory::fromArray($data, $this->activityRepository, $this->userRepository);
+
+        $this->assertEquals($uuid->getHex(), $frame->uuid);
+        $this->assertEquals($this->activity->entityKey, $frame->activityKey);
+        $this->assertEquals($this->activity, $frame->activity);
+        $this->assertEquals($this->role->id, $frame->roleId);
     }
 }

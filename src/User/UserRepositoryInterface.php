@@ -71,4 +71,12 @@ interface UserRepositoryInterface
      * @return RoleInterface|null
      */
     public function findCurrentUserRoleByName(string $name): ?RoleInterface;
+
+    /**
+     * Get a role for the current user by ID.
+     *
+     * @param int $roleId The role ID to find
+     * @return RoleInterface|null
+     */
+    public function getCurrentUserRoleById(int $roleId): ?RoleInterface;
 }

@@ -27,6 +27,7 @@ class ActivityTest extends TestCase
         $this->assertEquals('Test Description', $activity->description);
         $this->assertEquals($projectEntityKey, $activity->projectEntityKey);
         $this->assertEquals('test-alias', $activity->alias);
+        $this->assertFalse($activity->roleRequired); // Defaults to false
     }
 
     public function testConstructorWithoutAlias(): void
@@ -37,6 +38,23 @@ class ActivityTest extends TestCase
 
         $this->assertEquals($activityEntityKey, $activity->entityKey);
         $this->assertNull($activity->alias);
+        $this->assertFalse($activity->roleRequired); // Defaults to false
+    }
+
+    public function testConstructorWithRoleRequired(): void
+    {
+        $activityEntityKey = EntityKey::zebra(3);
+        $projectEntityKey = EntityKey::zebra(300);
+        $activity = new Activity(
+            $activityEntityKey,
+            'Activity 3',
+            'Description 3',
+            $projectEntityKey,
+            null,
+            true // roleRequired = true
+        );
+
+        $this->assertTrue($activity->roleRequired);
     }
 
     public function testToString(): void
@@ -56,6 +74,7 @@ class ActivityTest extends TestCase
         $this->assertStringContainsString('name=Test Activity', $string);
         $this->assertStringContainsString('projectEntityKey=', $string);
         $this->assertStringContainsString('alias=test-alias', $string);
+        $this->assertStringContainsString('roleRequired=false', $string);
     }
 
     public function testToStringWithoutAlias(): void
@@ -66,5 +85,6 @@ class ActivityTest extends TestCase
         $string = (string) $activity;
 
         $this->assertStringContainsString('alias=null', $string);
+        $this->assertStringContainsString('roleRequired=false', $string);
     }
 }

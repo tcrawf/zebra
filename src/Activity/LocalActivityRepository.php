@@ -356,7 +356,7 @@ class LocalActivityRepository implements LocalActivityRepositoryInterface
 
         // Check completed frames
         foreach ($allFrames as $frame) {
-            $frameActivityKey = $frame->activity->entityKey;
+            $frameActivityKey = $frame->activityKey;
             // Compare entityKeys: same source and same ID string
             if (
                 $frameActivityKey->source === $entityKey->source
@@ -369,7 +369,7 @@ class LocalActivityRepository implements LocalActivityRepositoryInterface
         // Check current (active) frame
         $currentFrame = $this->frameRepository->getCurrent();
         if ($currentFrame !== null) {
-            $currentFrameActivityKey = $currentFrame->activity->entityKey;
+            $currentFrameActivityKey = $currentFrame->activityKey;
             // Compare entityKeys: same source and same ID string
             if (
                 $currentFrameActivityKey->source === $entityKey->source
@@ -416,7 +416,7 @@ class LocalActivityRepository implements LocalActivityRepositoryInterface
 
             // Delete completed frames
             foreach ($allFrames as $frame) {
-                $frameActivityKey = $frame->activity->entityKey;
+                $frameActivityKey = $frame->activityKey;
                 // Compare entityKeys: same source and same ID string
                 if (
                     $frameActivityKey->source === $entityKey->source
@@ -429,7 +429,7 @@ class LocalActivityRepository implements LocalActivityRepositoryInterface
             // Delete current (active) frame if it references this activity
             $currentFrame = $this->frameRepository->getCurrent();
             if ($currentFrame !== null) {
-                $currentFrameActivityKey = $currentFrame->activity->entityKey;
+                $currentFrameActivityKey = $currentFrame->activityKey;
                 // Compare entityKeys: same source and same ID string
                 if (
                     $currentFrameActivityKey->source === $entityKey->source

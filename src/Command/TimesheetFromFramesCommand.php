@@ -108,7 +108,7 @@ class TimesheetFromFramesCommand extends Command
             // Filter to only Zebra activities (timesheets can only be created for Zebra activities)
             $zebraFrames = array_filter(
                 $completedFrames,
-                static fn($frame) => $frame->activity->entityKey->source === EntitySource::Zebra
+                static fn($frame) => $frame->activityKey->source === EntitySource::Zebra
             );
 
             if (empty($zebraFrames)) {
@@ -169,7 +169,7 @@ class TimesheetFromFramesCommand extends Command
         // Build mapping of groups to frames for description and role lookup
         $groupFrames = [];
         foreach ($frames as $frame) {
-            $activityKey = $frame->activity->entityKey->toString();
+            $activityKey = $frame->activityKey->toString();
             $frameIssueKeys = $frame->issueKeys;
             if (empty($frameIssueKeys)) {
                 $frameIssueKeys = ['(no issue key)'];

@@ -9,12 +9,14 @@ use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\MockObject\MockObject;
 use Tcrawf\Zebra\Activity\Activity;
+use Tcrawf\Zebra\Activity\ActivityRepositoryInterface;
 use Tcrawf\Zebra\EntityKey\EntityKey;
 use Tcrawf\Zebra\FileStorage\FileStorageInterface;
 use Tcrawf\Zebra\Role\Role;
 use Tcrawf\Zebra\Timesheet\LocalTimesheetRepository;
 use Tcrawf\Zebra\Timesheet\TimesheetFactory;
 use Tcrawf\Zebra\Timesheet\TimesheetFileStorageFactoryInterface;
+use Tcrawf\Zebra\User\UserRepositoryInterface;
 use Tcrawf\Zebra\Uuid\Uuid;
 use bovigo\vfs\vfsStream;
 use bovigo\vfs\vfsStreamDirectory;
@@ -25,6 +27,8 @@ class LocalTimesheetRepositoryTest extends TestCase
     private string $testHomeDir;
     private TimesheetFileStorageFactoryInterface&MockObject $storageFactory;
     private FileStorageInterface&MockObject $storage;
+    private ActivityRepositoryInterface&MockObject $activityRepository;
+    private UserRepositoryInterface&MockObject $userRepository;
     private LocalTimesheetRepository $repository;
     private Activity $activity;
 
@@ -42,7 +46,38 @@ class LocalTimesheetRepositoryTest extends TestCase
                 return $this->storage;
             });
 
-        $this->repository = new LocalTimesheetRepository($this->storageFactory, 'test_timesheets.json');
+        $this->activityRepository = $this->createMock(ActivityRepositoryInterface::class);
+        $this->userRepository = $this->createMock(UserRepositoryInterface::class);
+        
+        // Set up activity repository to return activities by key
+        $this->activityRepository->method('get')
+            ->willReturnCallback(function ($entityKey) {
+                // Return activity if it matches our test activity
+                if ($entityKey->toString() === EntityKey::zebra(123)->toString()) {
+                    return new Activity(
+                        EntityKey::zebra(123),
+                        'Test Activity',
+                        'Activity Description',
+                        EntityKey::zebra(100),
+                        'activity-123'
+                    );
+                }
+                // For other activity keys, create activities based on ID
+                if ($entityKey->source->value === 'zebra') {
+                    $activityId = is_int($entityKey->id) ? $entityKey->id : (int) $entityKey->id;
+                    $projectId = $activityId * 100; // Use pattern: activity 1 -> project 100, etc.
+                    return new Activity(
+                        $entityKey,
+                        "Activity {$activityId}",
+                        "Description {$activityId}",
+                        EntityKey::zebra($projectId),
+                        null
+                    );
+                }
+                return null;
+            });
+
+        $this->repository = new LocalTimesheetRepository($this->storageFactory, $this->activityRepository, $this->userRepository, 'test_timesheets.json');
         $this->activity = new Activity(
             EntityKey::zebra(123),
             'Test Activity',
@@ -51,6 +86,15 @@ class LocalTimesheetRepositoryTest extends TestCase
             'activity-123'
         );
         $this->role = new Role(1, null, 'Developer', 'Developer', 'employee', 'active');
+        
+        // Set up user repository to return roles by ID
+        $this->userRepository->method('getCurrentUserRoleById')
+            ->willReturnCallback(function ($roleId) {
+                if ($roleId === $this->role->id) {
+                    return $this->role;
+                }
+                return new Role($roleId, null, "Role {$roleId}", "Role {$roleId}", 'employee', 'active');
+            });
     }
 
     private Role $role;
