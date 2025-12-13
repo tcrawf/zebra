@@ -131,7 +131,7 @@ class TimesheetListCommand extends Command
         });
 
         // Format and display
-        $outputContent = $this->formatTimesheets($timesheets, $date);
+        $outputContent = $this->formatTimesheets($timesheets, $date, $frames);
         $io->writeln($outputContent);
 
         // Display totals
@@ -146,9 +146,10 @@ class TimesheetListCommand extends Command
      *
      * @param array<\Tcrawf\Zebra\Timesheet\TimesheetInterface> $timesheets
      * @param CarbonInterface $date
+     * @param array<\Tcrawf\Zebra\Frame\FrameInterface> $frames
      * @return string
      */
-    private function formatTimesheets(array $timesheets, CarbonInterface $date): string
+    private function formatTimesheets(array $timesheets, CarbonInterface $date, array $frames): string
     {
         if (empty($timesheets)) {
             return '';
@@ -175,7 +176,7 @@ class TimesheetListCommand extends Command
             $zebraIdDisplay = $timesheet->zebraId !== null ? (string) $timesheet->zebraId : '-';
 
             // Calculate aggregated frame time
-            $frameTimeFormatted = $this->calculateFrameTime($timesheet);
+            $frameTimeFormatted = $this->calculateFrameTime($timesheet, $frames);
 
             // Extract issue keys from description (same pattern as frames)
             $issueKeys = $this->extractIssueKeys($description);
@@ -294,29 +295,14 @@ class TimesheetListCommand extends Command
      * not from the referenced frames.
      *
      * @param \Tcrawf\Zebra\Timesheet\TimesheetInterface $timesheet
+     * @param array<\Tcrawf\Zebra\Frame\FrameInterface> $frames
      * @return string Formatted frame time or '-'
      */
-    private function calculateFrameTime(\Tcrawf\Zebra\Timesheet\TimesheetInterface $timesheet): string
+    private function calculateFrameTime(\Tcrawf\Zebra\Timesheet\TimesheetInterface $timesheet, array $frames): string
     {
         // Extract issue keys from timesheet description
         $timesheetIssueKeys = $this->extractIssueKeys($timesheet->description);
         sort($timesheetIssueKeys);
-
-        // Get the date range for the timesheet (same day)
-        $timesheetDate = $timesheet->date->setTimezone('Europe/Zurich');
-        $dayStart = $timesheetDate->copy()->startOfDay()->utc();
-        $dayEnd = $timesheetDate->copy()->endOfDay()->utc();
-
-        // Get all frames for this date
-        $frames = $this->frameRepository->filter(
-            [],
-            [],
-            [],
-            [],
-            $dayStart,
-            $dayEnd,
-            true // include partial frames
-        );
 
         // Filter to only completed frames with matching activity and issue keys
         $matchingFrames = [];
@@ -327,7 +313,7 @@ class TimesheetListCommand extends Command
             }
 
             // Must be a Zebra activity
-            if ($frame->activity->entityKey->source !== EntitySource::Zebra) {
+            if ($frame->activityKey->source !== EntitySource::Zebra) {
                 continue;
             }
 
