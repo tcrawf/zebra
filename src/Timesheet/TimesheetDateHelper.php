@@ -171,4 +171,70 @@ class TimesheetDateHelper
     {
         return $date->setTimezone('Europe/Zurich')->format('Y-m-d');
     }
+
+    /**
+     * Parse date range input from command options.
+     * Handles --from and --to options, or defaults to today if neither is provided.
+     *
+     * @param InputInterface $input The command input
+     * @return array{CarbonInterface, CarbonInterface} Array with [from, to] dates in Europe/Zurich timezone
+     * @throws \InvalidArgumentException If date format is invalid or from is after to
+     */
+    public static function parseDateRangeInput(InputInterface $input): array
+    {
+        $fromStr = $input->getOption('from');
+        $toStr = $input->getOption('to');
+
+        if ($fromStr !== null && $toStr !== null) {
+            // Both provided - parse both
+            $from = self::parseDateString($fromStr);
+            $to = self::parseDateString($toStr);
+        } elseif ($fromStr !== null) {
+            // Only --from provided - default --to to today
+            $from = self::parseDateString($fromStr);
+            $to = self::getTodayUtc();
+        } elseif ($toStr !== null) {
+            // Only --to provided - default --from to --to (same day)
+            $to = self::parseDateString($toStr);
+            $from = $to->copy();
+        } else {
+            // Neither provided - default both to today
+            $from = self::getTodayUtc();
+            $to = self::getTodayUtc();
+        }
+
+        // Validate that from is not after to
+        if ($from->gt($to)) {
+            throw new \InvalidArgumentException(
+                "Start date ({$from->format('Y-m-d')}) cannot be after end date ({$to->format('Y-m-d')})"
+            );
+        }
+
+        return [$from, $to];
+    }
+
+    /**
+     * Format a date range for display in local timezone.
+     * Converts Europe/Zurich dates to local timezone for user-friendly display.
+     *
+     * @param CarbonInterface $from Start date in Europe/Zurich timezone
+     * @param CarbonInterface $to End date in Europe/Zurich timezone
+     * @return string Formatted date range string
+     */
+    public static function formatDateRangeForDisplay(CarbonInterface $from, CarbonInterface $to): string
+    {
+        $localTimezone = date_default_timezone_get();
+        $localFrom = $from->copy()->setTimezone($localTimezone);
+        $localTo = $to->copy()->setTimezone($localTimezone);
+
+        // If same day, format as single date
+        if ($localFrom->format('Y-m-d') === $localTo->format('Y-m-d')) {
+            return self::formatDateForDisplay($from);
+        }
+
+        // Format as date range
+        $fromFormatted = sprintf('%s (%s)', $localFrom->format('l d F Y'), $localFrom->format('Y-m-d'));
+        $toFormatted = sprintf('%s (%s)', $localTo->format('l d F Y'), $localTo->format('Y-m-d'));
+        return sprintf('%s - %s', $fromFormatted, $toFormatted);
+    }
 }

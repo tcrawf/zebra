@@ -190,4 +190,120 @@ class TimesheetDateHelperTest extends TestCase
         // The calendar date should match, even if UTC time is different
         $this->assertEquals($localToday->format('Y-m-d'), $today->format('Y-m-d'));
     }
+
+    public function testParseDateRangeInputWithFromAndTo(): void
+    {
+        $definition = new InputDefinition([
+            new InputOption('from', 'f', InputOption::VALUE_OPTIONAL),
+            new InputOption('to', 't', InputOption::VALUE_OPTIONAL),
+        ]);
+
+        $input = new ArrayInput(['--from' => '2025-12-01', '--to' => '2025-12-05'], $definition);
+        [$from, $to] = TimesheetDateHelper::parseDateRangeInput($input);
+
+        $this->assertEquals('2025-12-01', $from->format('Y-m-d'));
+        $this->assertEquals('2025-12-05', $to->format('Y-m-d'));
+        $this->assertEquals('Europe/Zurich', $from->timezone->getName());
+        $this->assertEquals('Europe/Zurich', $to->timezone->getName());
+    }
+
+    public function testParseDateRangeInputWithFromOnly(): void
+    {
+        date_default_timezone_set('Europe/Zurich');
+        $definition = new InputDefinition([
+            new InputOption('from', 'f', InputOption::VALUE_OPTIONAL),
+            new InputOption('to', 't', InputOption::VALUE_OPTIONAL),
+        ]);
+
+        $input = new ArrayInput(['--from' => '2025-12-01'], $definition);
+        [$from, $to] = TimesheetDateHelper::parseDateRangeInput($input);
+
+        $this->assertEquals('2025-12-01', $from->format('Y-m-d'));
+        $localToday = Carbon::today('Europe/Zurich');
+        $this->assertEquals($localToday->format('Y-m-d'), $to->format('Y-m-d'));
+    }
+
+    public function testParseDateRangeInputWithToOnly(): void
+    {
+        date_default_timezone_set('Europe/Zurich');
+        $definition = new InputDefinition([
+            new InputOption('from', 'f', InputOption::VALUE_OPTIONAL),
+            new InputOption('to', 't', InputOption::VALUE_OPTIONAL),
+        ]);
+
+        $input = new ArrayInput(['--to' => '2025-12-05'], $definition);
+        [$from, $to] = TimesheetDateHelper::parseDateRangeInput($input);
+
+        // When only --to is provided, --from should default to --to (same day)
+        $this->assertEquals('2025-12-05', $from->format('Y-m-d'));
+        $this->assertEquals('2025-12-05', $to->format('Y-m-d'));
+    }
+
+    public function testParseDateRangeInputDefaultsToToday(): void
+    {
+        date_default_timezone_set('Europe/Zurich');
+        $definition = new InputDefinition([
+            new InputOption('from', 'f', InputOption::VALUE_OPTIONAL),
+            new InputOption('to', 't', InputOption::VALUE_OPTIONAL),
+        ]);
+
+        $input = new ArrayInput([], $definition);
+        [$from, $to] = TimesheetDateHelper::parseDateRangeInput($input);
+
+        $localToday = Carbon::today('Europe/Zurich');
+        $this->assertEquals($localToday->format('Y-m-d'), $from->format('Y-m-d'));
+        $this->assertEquals($localToday->format('Y-m-d'), $to->format('Y-m-d'));
+    }
+
+    public function testParseDateRangeInputThrowsExceptionWhenFromAfterTo(): void
+    {
+        $definition = new InputDefinition([
+            new InputOption('from', 'f', InputOption::VALUE_OPTIONAL),
+            new InputOption('to', 't', InputOption::VALUE_OPTIONAL),
+        ]);
+
+        $input = new ArrayInput(['--from' => '2025-12-05', '--to' => '2025-12-01'], $definition);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('cannot be after end date');
+        TimesheetDateHelper::parseDateRangeInput($input);
+    }
+
+    public function testParseDateRangeInputWithInvalidFromDate(): void
+    {
+        $definition = new InputDefinition([
+            new InputOption('from', 'f', InputOption::VALUE_OPTIONAL),
+            new InputOption('to', 't', InputOption::VALUE_OPTIONAL),
+        ]);
+
+        $input = new ArrayInput(['--from' => 'invalid-date'], $definition);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid date format');
+        TimesheetDateHelper::parseDateRangeInput($input);
+    }
+
+    public function testFormatDateRangeForDisplayWithSameDate(): void
+    {
+        date_default_timezone_set('Europe/Zurich');
+        $date = Carbon::parse('2025-12-01', 'Europe/Zurich')->startOfDay();
+        $formatted = TimesheetDateHelper::formatDateRangeForDisplay($date, $date);
+
+        // Should format as single date
+        $this->assertStringContainsString('2025-12-01', $formatted);
+        $this->assertStringNotContainsString(' - ', $formatted);
+    }
+
+    public function testFormatDateRangeForDisplayWithDifferentDates(): void
+    {
+        date_default_timezone_set('Europe/Zurich');
+        $from = Carbon::parse('2025-12-01', 'Europe/Zurich')->startOfDay();
+        $to = Carbon::parse('2025-12-05', 'Europe/Zurich')->startOfDay();
+        $formatted = TimesheetDateHelper::formatDateRangeForDisplay($from, $to);
+
+        // Should format as date range
+        $this->assertStringContainsString('2025-12-01', $formatted);
+        $this->assertStringContainsString('2025-12-05', $formatted);
+        $this->assertStringContainsString(' - ', $formatted);
+    }
 }

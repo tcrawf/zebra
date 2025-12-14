@@ -34,7 +34,7 @@ class TimesheetListCommand extends Command
         $this
             ->setName('timesheet:list')
             ->setAliases(['timesheets'])
-            ->setDescription('List timesheets for a given day')
+            ->setDescription('List timesheets for a given day or date range')
             ->addOption(
                 'date',
                 'd',
@@ -47,6 +47,20 @@ class TimesheetListCommand extends Command
                 null,
                 InputOption::VALUE_NONE,
                 'Show timesheets for yesterday'
+            )
+            ->addOption(
+                'from',
+                'f',
+                InputOption::VALUE_OPTIONAL,
+                'Start date for the timesheets (YYYY-MM-DD format, defaults to today)',
+                null
+            )
+            ->addOption(
+                'to',
+                't',
+                InputOption::VALUE_OPTIONAL,
+                'End date for the timesheets (YYYY-MM-DD format, defaults to today)',
+                null
             );
     }
 
@@ -54,16 +68,31 @@ class TimesheetListCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
 
-        // Parse date using centralized helper
+        // Check for conflicts between single date options and date range options
+        $hasDateRangeOptions = $input->getOption('from') !== null || $input->getOption('to') !== null;
+        $hasSingleDateOptions = $input->getOption('date') !== null || $input->getOption('yesterday') === true;
+
+        if ($hasDateRangeOptions && $hasSingleDateOptions) {
+            $io->error('Cannot specify both --date/--yesterday and --from/--to options');
+            return Command::FAILURE;
+        }
+
+        // Parse date range or single date
         try {
-            $date = TimesheetDateHelper::parseDateInput($input);
+            if ($hasDateRangeOptions) {
+                [$from, $to] = TimesheetDateHelper::parseDateRangeInput($input);
+            } else {
+                $date = TimesheetDateHelper::parseDateInput($input);
+                $from = $date;
+                $to = $date;
+            }
         } catch (\InvalidArgumentException $e) {
             $io->error($e->getMessage());
             return Command::FAILURE;
         }
 
-        // Get timesheets for the date
-        $timesheets = $this->timesheetRepository->getByDateRange($date, $date);
+        // Get timesheets for the date range
+        $timesheets = $this->timesheetRepository->getByDateRange($from, $to);
 
         // Calculate total before checking if empty (always show total)
         $totalTime = array_sum(array_map(static fn($t) => $t->time, $timesheets));
@@ -77,10 +106,12 @@ class TimesheetListCommand extends Command
         $totalTimeSyncable = array_sum(array_map(static fn($t) => $t->time, $syncableTimesheets));
         $totalHoursSyncable = round($totalTimeSyncable * 4) / 4; // Round to nearest 0.25
 
-        // Get frames for the date and calculate frame totals
-        $zurichDate = $date->copy()->setTimezone('Europe/Zurich');
-        $dayStart = $zurichDate->copy()->startOfDay()->utc();
-        $dayEnd = $zurichDate->copy()->endOfDay()->utc();
+        // Get frames for the date range and calculate frame totals
+        // Convert timesheet dates (Europe/Zurich calendar dates) to UTC timestamps for frame filtering
+        $zurichFrom = $from->copy()->setTimezone('Europe/Zurich');
+        $zurichTo = $to->copy()->setTimezone('Europe/Zurich');
+        $dayStart = $zurichFrom->copy()->startOfDay()->utc();
+        $dayEnd = $zurichTo->copy()->endOfDay()->utc();
 
         $frames = $this->frameRepository->filter(
             [],
@@ -114,8 +145,14 @@ class TimesheetListCommand extends Command
         $deltaSeconds = $totalSyncableSeconds - $totalFrameSeconds;
 
         if (empty($timesheets)) {
-            $dateStr = TimesheetDateHelper::formatDateForStorage($date);
-            $io->info("No timesheets found for {$dateStr}");
+            if ($from->format('Y-m-d') === $to->format('Y-m-d')) {
+                $dateStr = TimesheetDateHelper::formatDateForStorage($from);
+                $io->info("No timesheets found for {$dateStr}");
+            } else {
+                $fromStr = TimesheetDateHelper::formatDateForStorage($from);
+                $toStr = TimesheetDateHelper::formatDateForStorage($to);
+                $io->info("No timesheets found for {$fromStr} to {$toStr}");
+            }
             $io->writeln('');
             $this->displayTotals($io, $totalHours, $totalHoursSyncable, (int) $totalFrameSeconds, $deltaSeconds);
             return Command::SUCCESS;
@@ -131,7 +168,7 @@ class TimesheetListCommand extends Command
         });
 
         // Format and display
-        $outputContent = $this->formatTimesheets($timesheets, $date, $frames);
+        $outputContent = $this->formatTimesheets($timesheets, $from, $to, $frames);
         $io->writeln($outputContent);
 
         // Display totals
@@ -145,12 +182,17 @@ class TimesheetListCommand extends Command
      * Format timesheets as a table.
      *
      * @param array<\Tcrawf\Zebra\Timesheet\TimesheetInterface> $timesheets
-     * @param CarbonInterface $date
+     * @param CarbonInterface $from Start date
+     * @param CarbonInterface $to End date
      * @param array<\Tcrawf\Zebra\Frame\FrameInterface> $frames
      * @return string
      */
-    private function formatTimesheets(array $timesheets, CarbonInterface $date, array $frames): string
-    {
+    private function formatTimesheets(
+        array $timesheets,
+        CarbonInterface $from,
+        CarbonInterface $to,
+        array $frames
+    ): string {
         if (empty($timesheets)) {
             return '';
         }
@@ -228,8 +270,8 @@ class TimesheetListCommand extends Command
         $renderedTable = $bufferedOutput->fetch();
         $lines = explode("\n", rtrim($renderedTable, "\n"));
 
-        // Add header with date (formatted for display in local timezone)
-        $dateHeader = TimesheetDateHelper::formatDateForDisplay($date);
+        // Add header with date or date range (formatted for display in local timezone)
+        $dateHeader = TimesheetDateHelper::formatDateRangeForDisplay($from, $to);
         array_unshift($lines, $dateHeader);
         array_unshift($lines, '');
 
