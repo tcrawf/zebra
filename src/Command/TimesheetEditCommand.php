@@ -16,7 +16,9 @@ use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Tcrawf\Zebra\Activity\ActivityRepositoryInterface;
 use Tcrawf\Zebra\Command\Autocompletion\TimesheetAutocompletion;
+use Tcrawf\Zebra\Command\Trait\ActivityResolutionTrait;
 use Tcrawf\Zebra\EntityKey\EntityKey;
+use Tcrawf\Zebra\Project\ProjectRepositoryInterface;
 use Tcrawf\Zebra\Role\RoleInterface;
 use Tcrawf\Zebra\Timesheet\LocalTimesheetRepositoryInterface;
 use Tcrawf\Zebra\Timesheet\TimesheetFactory;
@@ -27,6 +29,7 @@ use Tcrawf\Zebra\Uuid\Uuid;
 
 class TimesheetEditCommand extends Command
 {
+    use ActivityResolutionTrait;
     use PhpUnitDetectionTrait;
 
     public function __construct(
@@ -34,7 +37,8 @@ class TimesheetEditCommand extends Command
         private readonly ZebraTimesheetRepositoryInterface $zebraTimesheetRepository,
         private readonly ActivityRepositoryInterface $activityRepository,
         private readonly UserRepositoryInterface $userRepository,
-        private readonly TimesheetAutocompletion $timesheetAutocompletion
+        private readonly TimesheetAutocompletion $timesheetAutocompletion,
+        private readonly ProjectRepositoryInterface $projectRepository
     ) {
         parent::__construct();
     }
@@ -45,7 +49,29 @@ class TimesheetEditCommand extends Command
             ->setName('timesheet:edit')
             ->setDescription('Edit a timesheet entry')
             ->addArgument('timesheet', InputArgument::OPTIONAL, 'Timesheet UUID')
-            ->addOption('editor', null, InputOption::VALUE_OPTIONAL, 'Editor command (default: $EDITOR or $VISUAL)');
+            ->addOption('editor', null, InputOption::VALUE_OPTIONAL, 'Editor command (default: $EDITOR or $VISUAL)')
+            ->addOption('activity', 'a', InputOption::VALUE_REQUIRED, 'Activity alias or ID')
+            ->addOption('description', 'd', InputOption::VALUE_REQUIRED, 'Description')
+            ->addOption(
+                'client-description',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Client description (empty string to clear)'
+            )
+            ->addOption('time', 't', InputOption::VALUE_REQUIRED, 'Time in hours (0.25 increments)')
+            ->addOption('date', null, InputOption::VALUE_REQUIRED, 'Date in Y-m-d format')
+            ->addOption('individual', null, InputOption::VALUE_NONE, 'Set as individual action')
+            ->addOption('no-individual', null, InputOption::VALUE_NONE, 'Set as non-individual')
+            ->addOption('role', 'r', InputOption::VALUE_REQUIRED, 'Role ID')
+            ->addOption('do-not-sync', null, InputOption::VALUE_NONE, 'Mark as do-not-sync')
+            ->addOption('sync', null, InputOption::VALUE_NONE, 'Mark for sync (unset do-not-sync)')
+            ->addOption('sync-remote', null, InputOption::VALUE_NONE, 'Pull latest from Zebra before editing')
+            ->addOption(
+                'no-sync-remote',
+                null,
+                InputOption::VALUE_NONE,
+                'Skip pulling from Zebra, edit local version'
+            );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -64,7 +90,22 @@ class TimesheetEditCommand extends Command
             return Command::FAILURE;
         }
 
-        // Check sync status before editing
+        $hasEditingFlags = $input->getOption('activity') !== null
+            || $input->getOption('description') !== null
+            || $input->getOption('client-description') !== null
+            || $input->getOption('time') !== null
+            || $input->getOption('date') !== null
+            || $input->getOption('individual')
+            || $input->getOption('no-individual')
+            || $input->getOption('role') !== null
+            || $input->getOption('do-not-sync')
+            || $input->getOption('sync');
+
+        if ($hasEditingFlags) {
+            return $this->executeWithFlags($input, $io, $timesheet);
+        }
+
+        // Check sync status before editing (interactive editor path)
         if ($timesheet->zebraId !== null) {
             $shouldSync = $this->checkSyncStatus($timesheet, $io, $input);
             if ($shouldSync) {
@@ -315,6 +356,247 @@ class TimesheetEditCommand extends Command
                 $text = $editedJson;
             }
         }
+    }
+
+    /**
+     * Apply edits to a timesheet using CLI flags (non-interactive mode).
+     *
+     * @param InputInterface $input
+     * @param SymfonyStyle $io
+     * @param TimesheetInterface $timesheet
+     * @return int Command exit code
+     */
+    private function executeWithFlags(
+        InputInterface $input,
+        SymfonyStyle $io,
+        TimesheetInterface $timesheet
+    ): int {
+        // Handle sync-remote guard for synced timesheets
+        if ($timesheet->zebraId !== null) {
+            $syncRemote = $input->getOption('sync-remote');
+            $noSyncRemote = $input->getOption('no-sync-remote');
+
+            if ($syncRemote && $noSyncRemote) {
+                $io->error('Cannot use --sync-remote and --no-sync-remote together.');
+                return Command::FAILURE;
+            }
+
+            if (!$syncRemote && !$noSyncRemote) {
+                $io->error(
+                    'This timesheet has been synced to Zebra (ID: ' . $timesheet->zebraId . '). '
+                    . 'You must specify --sync-remote or --no-sync-remote when using flags.'
+                );
+                return Command::FAILURE;
+            }
+
+            if ($syncRemote) {
+                $timesheet = $this->syncFromZebra($timesheet, $io);
+            }
+        }
+
+        $activity = $timesheet->activity;
+        $isIndividual = $timesheet->individualAction;
+        $role = $timesheet->role;
+        $description = $timesheet->description;
+        $clientDescription = $timesheet->clientDescription;
+        $time = $timesheet->time;
+        $date = $timesheet->date;
+        $doNotSync = $timesheet->doNotSync;
+
+        // Resolve activity
+        $activityIdentifier = $input->getOption('activity');
+        if ($activityIdentifier !== null) {
+            $newActivity = $this->resolveActivity($activityIdentifier, $io);
+            if ($newActivity === null) {
+                $io->error("Activity '{$activityIdentifier}' not found.");
+                return Command::FAILURE;
+            }
+            $activity = $newActivity;
+        }
+
+        // Resolve description
+        $descriptionOption = $input->getOption('description');
+        if ($descriptionOption !== null) {
+            if (empty(trim($descriptionOption))) {
+                $io->error('Description cannot be empty.');
+                return Command::FAILURE;
+            }
+            $description = $descriptionOption;
+        }
+
+        // Resolve client description (empty string clears it)
+        $clientDescOption = $input->getOption('client-description');
+        if ($clientDescOption !== null) {
+            $clientDescription = $clientDescOption === '' ? null : $clientDescOption;
+        }
+
+        // Resolve isIndividual
+        if ($input->getOption('individual') && $input->getOption('no-individual')) {
+            $io->error('Cannot use --individual and --no-individual together.');
+            return Command::FAILURE;
+        }
+        if ($input->getOption('individual')) {
+            $isIndividual = true;
+        } elseif ($input->getOption('no-individual')) {
+            $isIndividual = false;
+        }
+
+        // Resolve role
+        $roleOption = $input->getOption('role');
+        if ($roleOption !== null) {
+            if ($isIndividual) {
+                $io->error('Cannot set --role for individual timesheets. Remove --individual first.');
+                return Command::FAILURE;
+            }
+            if (!ctype_digit($roleOption)) {
+                $io->error('Role must be a numeric ID.');
+                return Command::FAILURE;
+            }
+            $newRole = $this->validateAndGetRole((int) $roleOption, $io);
+            if ($newRole === null) {
+                return Command::FAILURE;
+            }
+            $role = $newRole;
+        }
+
+        // Clear role when switching to individual
+        if ($isIndividual && $role !== null) {
+            $role = null;
+        }
+
+        // Validate: activity requires role and not individual
+        if ($activity->roleRequired && !$isIndividual && $role === null) {
+            $io->error('Activity requires a role. Use --role or --individual.');
+            return Command::FAILURE;
+        }
+
+        // Resolve time
+        $timeOption = $input->getOption('time');
+        if ($timeOption !== null) {
+            if (!is_numeric($timeOption)) {
+                $io->error("Time must be numeric, got: {$timeOption}");
+                return Command::FAILURE;
+            }
+            $time = (float) $timeOption;
+
+            $remainder = fmod($time * 100, 25);
+            if (abs($remainder) > 0.0001) {
+                $io->error("Time must be a multiple of 0.25, got: {$time}");
+                return Command::FAILURE;
+            }
+            if ($time <= 0) {
+                $io->error("Time must be positive, got: {$time}");
+                return Command::FAILURE;
+            }
+        }
+
+        // Resolve date
+        $dateOption = $input->getOption('date');
+        if ($dateOption !== null) {
+            try {
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOption)) {
+                    $date = Carbon::parse($dateOption, 'Europe/Zurich')->startOfDay();
+                } else {
+                    $localTimezone = date_default_timezone_get();
+                    $localParsed = Carbon::parse($dateOption, $localTimezone);
+                    $date = $localParsed->setTimezone('Europe/Zurich')->startOfDay();
+                }
+            } catch (\Exception $e) {
+                $io->error("Invalid date format: {$dateOption}. Use YYYY-MM-DD format.");
+                return Command::FAILURE;
+            }
+        }
+
+        // Resolve doNotSync flags
+        if ($input->getOption('do-not-sync') && $input->getOption('sync')) {
+            $io->error('Cannot use --do-not-sync and --sync together.');
+            return Command::FAILURE;
+        }
+        if ($input->getOption('do-not-sync')) {
+            $doNotSync = true;
+        } elseif ($input->getOption('sync')) {
+            $doNotSync = false;
+        }
+
+        // Preserve UUID, frameUuids, zebraId, and updatedAt
+        $uuid = Uuid::fromHex($timesheet->uuid);
+        $frameUuids = $timesheet->frameUuids;
+        $zebraId = $timesheet->zebraId;
+        $updatedAt = $timesheet->updatedAt;
+
+        $updatedTimesheet = TimesheetFactory::create(
+            $activity,
+            $description,
+            $clientDescription,
+            $time,
+            $date,
+            $role,
+            $isIndividual,
+            $frameUuids,
+            $zebraId,
+            $updatedAt,
+            $uuid,
+            $doNotSync
+        );
+
+        $this->timesheetRepository->save($updatedTimesheet);
+        $io->writeln('<info>Timesheet updated successfully.</info>');
+        return Command::SUCCESS;
+    }
+
+    /**
+     * Pull latest timesheet data from Zebra for a synced timesheet.
+     *
+     * @param TimesheetInterface $timesheet
+     * @param SymfonyStyle $io
+     * @return TimesheetInterface The updated timesheet (or original on failure)
+     */
+    private function syncFromZebra(TimesheetInterface $timesheet, SymfonyStyle $io): TimesheetInterface
+    {
+        try {
+            $remoteTimesheet = $this->zebraTimesheetRepository->getByZebraId($timesheet->zebraId);
+            if ($remoteTimesheet !== null) {
+                $existingUuid = Uuid::fromHex($timesheet->uuid);
+                $updatedTimesheet = TimesheetFactory::create(
+                    $remoteTimesheet->activity,
+                    $remoteTimesheet->description,
+                    $remoteTimesheet->clientDescription,
+                    $remoteTimesheet->time,
+                    $remoteTimesheet->date,
+                    $remoteTimesheet->role,
+                    $remoteTimesheet->individualAction,
+                    $timesheet->frameUuids,
+                    $remoteTimesheet->zebraId,
+                    $remoteTimesheet->updatedAt,
+                    $existingUuid,
+                    $timesheet->doNotSync
+                );
+
+                $this->timesheetRepository->update($updatedTimesheet);
+                $io->writeln('<info>Timesheet synced from Zebra.</info>');
+                return $updatedTimesheet;
+            }
+        } catch (\Exception $e) {
+            $io->warning('Failed to sync from Zebra: ' . $e->getMessage());
+            $io->writeln('Proceeding with local version...');
+        }
+        return $timesheet;
+    }
+
+    /**
+     * Get activity repository instance (required by ActivityResolutionTrait).
+     */
+    protected function getActivityRepository(): ActivityRepositoryInterface
+    {
+        return $this->activityRepository;
+    }
+
+    /**
+     * Get project repository instance (required by ActivityResolutionTrait).
+     */
+    protected function getProjectRepository(): ProjectRepositoryInterface
+    {
+        return $this->projectRepository;
     }
 
     /**

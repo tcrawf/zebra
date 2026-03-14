@@ -445,6 +445,111 @@ class AddCommandTest extends TestCase
         $this->assertStringContainsString('Invalid time range', $this->commandTester->getDisplay());
     }
 
+    public function testAddWithActivityOption(): void
+    {
+        $from = Carbon::now()->subHour();
+        $to = Carbon::now();
+        $frame = new Frame(
+            Uuid::random(),
+            $from,
+            $to,
+            $this->activity,
+            false,
+            $this->role,
+            'Some description'
+        );
+
+        $this->activityRepository
+            ->expects($this->once())
+            ->method('getByAlias')
+            ->with('test-alias')
+            ->willReturn($this->activity);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getLastUsedRoleForActivity')
+            ->with($this->activity)
+            ->willReturn(null);
+
+        $this->userRepository
+            ->expects($this->once())
+            ->method('getCurrentUserDefaultRole')
+            ->willReturn($this->role);
+
+        $this->track
+            ->expects($this->once())
+            ->method('add')
+            ->with(
+                $this->activity,
+                $this->anything(),
+                $this->anything(),
+                'Some description',
+                false,
+                $this->role
+            )
+            ->willReturn($frame);
+
+        // Only +description as positional (no activity identifier),
+        // --activity option provides the activity
+        $this->commandTester->execute([
+            'activity' => ['+Some', 'description'],
+            '--activity' => 'test-alias',
+            '--from' => $from->toIso8601String(),
+            '--to' => $to->toIso8601String()
+        ]);
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('Frame added successfully', $this->commandTester->getDisplay());
+    }
+
+    public function testAddWithBothPositionalAndOptionPrefersPositional(): void
+    {
+        $from = Carbon::now()->subHour();
+        $to = Carbon::now();
+        $frame = new Frame(
+            Uuid::random(),
+            $from,
+            $to,
+            $this->activity,
+            false,
+            $this->role,
+            ''
+        );
+
+        // Positional 'test-alias' should be used, not --activity 'other-alias'
+        $this->activityRepository
+            ->expects($this->once())
+            ->method('getByAlias')
+            ->with('test-alias')
+            ->willReturn($this->activity);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getLastUsedRoleForActivity')
+            ->with($this->activity)
+            ->willReturn(null);
+
+        $this->userRepository
+            ->expects($this->once())
+            ->method('getCurrentUserDefaultRole')
+            ->willReturn($this->role);
+
+        $this->track
+            ->expects($this->once())
+            ->method('add')
+            ->with($this->activity, $this->anything(), $this->anything(), null, false, $this->role)
+            ->willReturn($frame);
+
+        $this->commandTester->execute([
+            'activity' => 'test-alias',
+            '--activity' => 'other-alias',
+            '--from' => $from->toIso8601String(),
+            '--to' => $to->toIso8601String()
+        ]);
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+    }
+
     public function testAddWithNoActivityButIssueKeysFoundUsesLastActivity(): void
     {
         $from = Carbon::now()->subHours(2);

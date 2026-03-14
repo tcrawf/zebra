@@ -640,6 +640,147 @@ class StartCommandTest extends TestCase
         $this->assertStringContainsString('Frame started successfully', $this->commandTester->getDisplay());
     }
 
+    public function testStartWithActivityOption(): void
+    {
+        $frame = new Frame(
+            Uuid::random(),
+            Carbon::now(),
+            null,
+            $this->activity,
+            false,
+            $this->role,
+            ''
+        );
+
+        $this->activityRepository
+            ->expects($this->once())
+            ->method('getByAlias')
+            ->with('test-alias')
+            ->willReturn($this->activity);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getLastUsedRoleForActivity')
+            ->with($this->activity)
+            ->willReturn(null);
+
+        $this->userRepository
+            ->expects($this->once())
+            ->method('getCurrentUserDefaultRole')
+            ->willReturn($this->role);
+
+        $this->track
+            ->expects($this->once())
+            ->method('start')
+            ->with($this->activity, null, null, true, false, $this->role)
+            ->willReturn($frame);
+
+        $this->commandTester->execute([
+            '--activity' => 'test-alias'
+        ]);
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('Frame started successfully', $this->commandTester->getDisplay());
+    }
+
+    public function testStartWithActivityOptionOverridesInteractivePrompt(): void
+    {
+        $frame = new Frame(
+            Uuid::random(),
+            Carbon::now(),
+            null,
+            $this->activity,
+            false,
+            $this->role,
+            'Some description'
+        );
+
+        $this->activityRepository
+            ->expects($this->once())
+            ->method('getByAlias')
+            ->with('test-alias')
+            ->willReturn($this->activity);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getLastUsedRoleForActivity')
+            ->with($this->activity)
+            ->willReturn(null);
+
+        $this->userRepository
+            ->expects($this->once())
+            ->method('getCurrentUserDefaultRole')
+            ->willReturn($this->role);
+
+        $this->track
+            ->expects($this->once())
+            ->method('start')
+            ->with($this->activity, 'Some description', null, true, false, $this->role)
+            ->willReturn($frame);
+
+        // Only +description as positional (no activity identifier),
+        // --activity option should be used instead of hitting the interactive prompt
+        $this->commandTester->execute([
+            'activity' => ['+Some', 'description'],
+            '--activity' => 'test-alias'
+        ]);
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('Frame started successfully', $this->commandTester->getDisplay());
+    }
+
+    public function testStartWithBothPositionalAndOptionPrefersPositional(): void
+    {
+        $otherActivity = TestEntityFactory::createActivity(
+            EntityKey::zebra(2),
+            'Other Activity',
+            'Other',
+            EntityKey::zebra(200),
+            'other-alias'
+        );
+
+        $frame = new Frame(
+            Uuid::random(),
+            Carbon::now(),
+            null,
+            $this->activity,
+            false,
+            $this->role,
+            ''
+        );
+
+        // Positional 'test-alias' should be used, not --activity 'other-alias'
+        $this->activityRepository
+            ->expects($this->once())
+            ->method('getByAlias')
+            ->with('test-alias')
+            ->willReturn($this->activity);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getLastUsedRoleForActivity')
+            ->with($this->activity)
+            ->willReturn(null);
+
+        $this->userRepository
+            ->expects($this->once())
+            ->method('getCurrentUserDefaultRole')
+            ->willReturn($this->role);
+
+        $this->track
+            ->expects($this->once())
+            ->method('start')
+            ->with($this->activity, null, null, true, false, $this->role)
+            ->willReturn($frame);
+
+        $this->commandTester->execute([
+            'activity' => 'test-alias',
+            '--activity' => 'other-alias'
+        ]);
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+    }
+
     public function testStartWithNoActivityButNoIssueKeysInDescription(): void
     {
         // No activity provided and no issue keys in description

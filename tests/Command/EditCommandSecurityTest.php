@@ -12,6 +12,7 @@ use Tcrawf\Zebra\Activity\ActivityRepositoryInterface;
 use Tcrawf\Zebra\Command\Autocompletion\FrameAutocompletion;
 use Tcrawf\Zebra\Command\EditCommand;
 use Tcrawf\Zebra\Frame\FrameRepositoryInterface;
+use Tcrawf\Zebra\Project\ProjectRepositoryInterface;
 use Tcrawf\Zebra\Timezone\TimezoneFormatter;
 use Tcrawf\Zebra\User\UserRepositoryInterface;
 
@@ -22,6 +23,7 @@ class EditCommandSecurityTest extends TestCase
     private ActivityRepositoryInterface&MockObject $activityRepository;
     private UserRepositoryInterface&MockObject $userRepository;
     private FrameAutocompletion&MockObject $autocompletion;
+    private ProjectRepositoryInterface&MockObject $projectRepository;
     private EditCommand $command;
     private CommandTester $commandTester;
 
@@ -32,13 +34,15 @@ class EditCommandSecurityTest extends TestCase
         $this->activityRepository = $this->createMock(ActivityRepositoryInterface::class);
         $this->userRepository = $this->createMock(UserRepositoryInterface::class);
         $this->autocompletion = $this->createMock(FrameAutocompletion::class);
+        $this->projectRepository = $this->createMock(ProjectRepositoryInterface::class);
 
         $this->command = new EditCommand(
             $this->frameRepository,
             $this->timezoneFormatter,
             $this->activityRepository,
             $this->userRepository,
-            $this->autocompletion
+            $this->autocompletion,
+            $this->projectRepository
         );
 
         $application = new Application();

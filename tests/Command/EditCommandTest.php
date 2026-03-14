@@ -16,6 +16,7 @@ use Tcrawf\Zebra\EntityKey\EntityKey;
 use Tcrawf\Zebra\EntityKey\EntitySource;
 use Tcrawf\Zebra\Frame\Frame;
 use Tcrawf\Zebra\Frame\FrameRepositoryInterface;
+use Tcrawf\Zebra\Project\ProjectRepositoryInterface;
 use Tcrawf\Zebra\Role\Role;
 use Tcrawf\Zebra\Timezone\TimezoneFormatter;
 use Tcrawf\Zebra\User\User;
@@ -34,6 +35,7 @@ class EditCommandTest extends TestCase
     private ActivityRepositoryInterface&MockObject $activityRepository;
     private UserRepositoryInterface&MockObject $userRepository;
     private FrameAutocompletion&MockObject $autocompletion;
+    private ProjectRepositoryInterface&MockObject $projectRepository;
     private EditCommand $command;
     private CommandTester $commandTester;
     private Activity $activity;
@@ -48,13 +50,15 @@ class EditCommandTest extends TestCase
         $this->activityRepository = $this->createMock(ActivityRepositoryInterface::class);
         $this->userRepository = $this->createMock(UserRepositoryInterface::class);
         $this->autocompletion = $this->createMock(FrameAutocompletion::class);
+        $this->projectRepository = $this->createMock(ProjectRepositoryInterface::class);
 
         $this->command = new EditCommand(
             $this->frameRepository,
             $this->timezoneFormatter,
             $this->activityRepository,
             $this->userRepository,
-            $this->autocompletion
+            $this->autocompletion,
+            $this->projectRepository
         );
 
         $this->commandTester = $this->setupCommandTester($this->command);
@@ -1027,6 +1031,492 @@ class EditCommandTest extends TestCase
         }
     }
 
+
+    // -------------------------------------------------------------------------
+    // Flag-based editing tests
+    // -------------------------------------------------------------------------
+
+    public function testEditFrameWithDescriptionFlag(): void
+    {
+        $uuid = $this->frame->uuid;
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('get')
+            ->with($uuid)
+            ->willReturn($this->frame);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn(null);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('update')
+            ->with($this->callback(function ($frame) {
+                return $frame instanceof Frame
+                    && $frame->description === 'New description via flag'
+                    && $frame->uuid === $this->frame->uuid;
+            }));
+
+        $this->commandTester->execute(
+            ['frame' => $uuid, '--description' => 'New description via flag'],
+            ['interactive' => false]
+        );
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('Frame updated successfully', $this->commandTester->getDisplay());
+    }
+
+    public function testEditFrameWithStartFlag(): void
+    {
+        $uuid = $this->frame->uuid;
+        $newStart = Carbon::now()->utc()->subHours(3);
+        $localNewStart = $this->timezoneFormatter->toLocal($newStart);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('get')
+            ->with($uuid)
+            ->willReturn($this->frame);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn(null);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('update')
+            ->with($this->callback(function ($frame) use ($newStart) {
+                return $frame instanceof Frame
+                    && abs($frame->startTime->timestamp - $newStart->timestamp) <= 1;
+            }));
+
+        $this->commandTester->execute(
+            ['frame' => $uuid, '--start' => $localNewStart->format('Y-m-d H:i:s')],
+            ['interactive' => false]
+        );
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('Frame updated successfully', $this->commandTester->getDisplay());
+    }
+
+    public function testEditFrameWithStopFlag(): void
+    {
+        $uuid = $this->frame->uuid;
+        $newStop = Carbon::now()->utc()->subMinutes(30);
+        $localNewStop = $this->timezoneFormatter->toLocal($newStop);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('get')
+            ->with($uuid)
+            ->willReturn($this->frame);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn(null);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('update')
+            ->with($this->callback(function ($frame) use ($newStop) {
+                return $frame instanceof Frame
+                    && $frame->stopTime !== null
+                    && abs($frame->stopTime->timestamp - $newStop->timestamp) <= 1;
+            }));
+
+        $this->commandTester->execute(
+            ['frame' => $uuid, '--stop' => $localNewStop->format('Y-m-d H:i:s')],
+            ['interactive' => false]
+        );
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('Frame updated successfully', $this->commandTester->getDisplay());
+    }
+
+    public function testEditFrameWithActivityFlag(): void
+    {
+        $uuid = $this->frame->uuid;
+        $newActivity = TestEntityFactory::createActivity(
+            EntityKey::zebra(2),
+            'New Activity',
+            'Description',
+            EntityKey::zebra(100),
+            'new-alias'
+        );
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('get')
+            ->with($uuid)
+            ->willReturn($this->frame);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn(null);
+
+        $this->activityRepository
+            ->expects($this->once())
+            ->method('getByAlias')
+            ->with('new-alias')
+            ->willReturn($newActivity);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('update')
+            ->with($this->callback(function ($frame) use ($newActivity) {
+                return $frame instanceof Frame
+                    && $frame->activity->entityKey->toString() === $newActivity->entityKey->toString();
+            }));
+
+        $this->commandTester->execute(
+            ['frame' => $uuid, '--activity' => 'new-alias'],
+            ['interactive' => false]
+        );
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('Frame updated successfully', $this->commandTester->getDisplay());
+    }
+
+    public function testEditFrameWithRoleFlag(): void
+    {
+        $uuid = $this->frame->uuid;
+        $newRole = TestEntityFactory::createRole(2, null, 'Tester', 'Tester', 'employee', 'active');
+        $userWithRoles = TestEntityFactory::createUser(
+            1,
+            'testuser',
+            'Test',
+            'User',
+            'Test User',
+            'test@example.com',
+            [$this->role, $newRole]
+        );
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('get')
+            ->with($uuid)
+            ->willReturn($this->frame);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn(null);
+
+        $this->userRepository
+            ->expects($this->once())
+            ->method('getCurrentUser')
+            ->willReturn($userWithRoles);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('update')
+            ->with($this->callback(function ($frame) {
+                return $frame instanceof Frame
+                    && $frame->role !== null
+                    && $frame->role->id === 2;
+            }));
+
+        $this->commandTester->execute(
+            ['frame' => $uuid, '--role' => '2'],
+            ['interactive' => false]
+        );
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('Frame updated successfully', $this->commandTester->getDisplay());
+    }
+
+    public function testEditFrameWithIndividualFlag(): void
+    {
+        $uuid = $this->frame->uuid;
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('get')
+            ->with($uuid)
+            ->willReturn($this->frame);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn(null);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('update')
+            ->with($this->callback(function ($frame) {
+                return $frame instanceof Frame
+                    && $frame->isIndividual === true
+                    && $frame->role === null;
+            }));
+
+        $this->commandTester->execute(
+            ['frame' => $uuid, '--individual' => true],
+            ['interactive' => false]
+        );
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('Frame updated successfully', $this->commandTester->getDisplay());
+    }
+
+    public function testEditFrameWithMultipleFlags(): void
+    {
+        $uuid = $this->frame->uuid;
+        $newStart = Carbon::now()->utc()->subHours(5);
+        $newStop = Carbon::now()->utc()->subHours(4);
+        $localNewStart = $this->timezoneFormatter->toLocal($newStart);
+        $localNewStop = $this->timezoneFormatter->toLocal($newStop);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('get')
+            ->with($uuid)
+            ->willReturn($this->frame);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn(null);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('update')
+            ->with($this->callback(function ($frame) {
+                return $frame instanceof Frame
+                    && $frame->description === 'Multi-flag update'
+                    && $frame->isIndividual === true
+                    && $frame->role === null;
+            }));
+
+        $this->commandTester->execute(
+            [
+                'frame' => $uuid,
+                '--start' => $localNewStart->format('Y-m-d H:i:s'),
+                '--stop' => $localNewStop->format('Y-m-d H:i:s'),
+                '--description' => 'Multi-flag update',
+                '--individual' => true,
+            ],
+            ['interactive' => false]
+        );
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('Frame updated successfully', $this->commandTester->getDisplay());
+    }
+
+    public function testEditFrameNoFlagsFallsBackToEditor(): void
+    {
+        $uuid = $this->frame->uuid;
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('get')
+            ->with($uuid)
+            ->willReturn($this->frame);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn(null);
+
+        $testEditor = TestEditorHelper::createTestEditorScript('no-change');
+        putenv('EDITOR=' . $testEditor);
+
+        try {
+            $this->commandTester->execute(['frame' => $uuid], ['interactive' => false]);
+            $this->assertEquals(0, $this->commandTester->getStatusCode());
+            $this->assertStringContainsString('No changes made', $this->commandTester->getDisplay());
+        } finally {
+            if (file_exists($testEditor)) {
+                unlink($testEditor);
+            }
+            putenv('EDITOR');
+        }
+    }
+
+    public function testEditFrameInvalidActivityFlagReturnsError(): void
+    {
+        $uuid = $this->frame->uuid;
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('get')
+            ->with($uuid)
+            ->willReturn($this->frame);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn(null);
+
+        $this->activityRepository
+            ->method('getByAlias')
+            ->with('nonexistent')
+            ->willReturn(null);
+
+        $this->activityRepository
+            ->method('searchByAlias')
+            ->willReturn([]);
+
+        $this->projectRepository
+            ->method('getByNameLike')
+            ->willReturn([]);
+
+        $this->commandTester->execute(
+            ['frame' => $uuid, '--activity' => 'nonexistent'],
+            ['interactive' => false]
+        );
+
+        $this->assertEquals(1, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('not found', $this->commandTester->getDisplay());
+    }
+
+    public function testEditFrameIndividualAndNoIndividualConflict(): void
+    {
+        $uuid = $this->frame->uuid;
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('get')
+            ->with($uuid)
+            ->willReturn($this->frame);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn(null);
+
+        $this->commandTester->execute(
+            ['frame' => $uuid, '--individual' => true, '--no-individual' => true],
+            ['interactive' => false]
+        );
+
+        $this->assertEquals(1, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString(
+            'Cannot use --individual and --no-individual together',
+            $this->commandTester->getDisplay()
+        );
+    }
+
+    public function testEditFrameWithRoleOnIndividualReturnsError(): void
+    {
+        $uuid = $this->frame->uuid;
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('get')
+            ->with($uuid)
+            ->willReturn($this->frame);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn(null);
+
+        $this->commandTester->execute(
+            ['frame' => $uuid, '--individual' => true, '--role' => '1'],
+            ['interactive' => false]
+        );
+
+        $this->assertEquals(1, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString(
+            'Cannot set --role for individual frames',
+            $this->commandTester->getDisplay()
+        );
+    }
+
+    public function testEditFrameWithFutureStartTimeReturnsError(): void
+    {
+        $activeFrame = TestEntityFactory::createActiveFrame(
+            Uuid::random(),
+            Carbon::now()->utc()->subHour(),
+            $this->activity,
+            false,
+            $this->role,
+            'Active frame'
+        );
+
+        $futureTime = Carbon::now()->addDay();
+        $localFuture = $this->timezoneFormatter->toLocal($futureTime);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn($activeFrame);
+
+        $this->commandTester->execute(
+            ['--start' => $localFuture->format('Y-m-d H:i:s')],
+            ['interactive' => false]
+        );
+
+        $this->assertEquals(1, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('Start time cannot be in the future', $this->commandTester->getDisplay());
+    }
+
+    public function testEditFrameWithStopBeforeStartReturnsError(): void
+    {
+        $uuid = $this->frame->uuid;
+        $earlyStop = Carbon::now()->utc()->subHours(5);
+        $localEarlyStop = $this->timezoneFormatter->toLocal($earlyStop);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('get')
+            ->with($uuid)
+            ->willReturn($this->frame);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn(null);
+
+        $this->commandTester->execute(
+            ['frame' => $uuid, '--stop' => $localEarlyStop->format('Y-m-d H:i:s')],
+            ['interactive' => false]
+        );
+
+        $this->assertEquals(1, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('Stop time must be after start time', $this->commandTester->getDisplay());
+    }
+
+    public function testEditCurrentFrameWithFlagsUpdatesAsCurrent(): void
+    {
+        $currentFrame = TestEntityFactory::createActiveFrame(
+            Uuid::random(),
+            Carbon::now()->utc()->subHour(),
+            $this->activity,
+            false,
+            $this->role,
+            'Current frame'
+        );
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn($currentFrame);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('saveCurrent')
+            ->with($this->callback(function ($frame) use ($currentFrame) {
+                return $frame instanceof Frame
+                    && $frame->description === 'Updated current via flag'
+                    && $frame->uuid === $currentFrame->uuid
+                    && $frame->isActive();
+            }));
+
+        $this->commandTester->execute(
+            ['--description' => 'Updated current via flag'],
+            ['interactive' => false]
+        );
+
+        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        $this->assertStringContainsString('Frame updated successfully', $this->commandTester->getDisplay());
+    }
 
     /**
      * Mock STDIN input for pauseForUser() method.

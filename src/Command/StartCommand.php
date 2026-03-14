@@ -69,7 +69,8 @@ class StartCommand extends Command
                 'Mark frame as individual action (does not require a role)'
             )
             ->addOption('no-gap', null, InputOption::VALUE_NONE, 'Start immediately after previous frame ends')
-            ->addOption('at', null, InputOption::VALUE_OPTIONAL, 'Start time (ISO 8601 format)');
+            ->addOption('at', null, InputOption::VALUE_OPTIONAL, 'Start time (ISO 8601 format)')
+            ->addOption('activity', 'a', InputOption::VALUE_REQUIRED, 'Activity alias or ID');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -102,6 +103,14 @@ class StartCommand extends Command
 
         // Use description from + syntax if provided, otherwise use option
         $description = $descriptionFromPlus ?? $input->getOption('description');
+
+        // Fall back to --activity option if positional argument was not provided
+        if ($activityIdentifier === null) {
+            $activityOption = $input->getOption('activity');
+            if ($activityOption !== null) {
+                $activityIdentifier = $activityOption;
+            }
+        }
 
         // If no activity found, try to find last activity for issue keys in description
         $activity = null;

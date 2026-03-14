@@ -237,7 +237,8 @@ class Application extends SymfonyApplication
                 $this->timezoneFormatter,
                 $this->activityRepository,
                 $this->userRepository,
-                $this->frameAutocompletion
+                $this->frameAutocompletion,
+                $this->projectRepository
             )
         );
         $this->addCommand(new RemoveCommand($this->frameRepository, $this->frameAutocompletion));
@@ -297,7 +298,8 @@ class Application extends SymfonyApplication
                 $this->zebraTimesheetRepository,
                 $this->activityRepository,
                 $this->userRepository,
-                $this->timesheetAutocompletion
+                $this->timesheetAutocompletion,
+                $this->projectRepository
             )
         );
         $this->addCommand(new TimesheetListCommand($this->timesheetRepository, $this->frameRepository));

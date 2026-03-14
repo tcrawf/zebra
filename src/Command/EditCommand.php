@@ -15,11 +15,13 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Tcrawf\Zebra\Activity\ActivityRepositoryInterface;
 use Tcrawf\Zebra\Command\Autocompletion\FrameAutocompletion;
+use Tcrawf\Zebra\Command\Trait\ActivityResolutionTrait;
 use Tcrawf\Zebra\EntityKey\EntityKey;
 use Tcrawf\Zebra\EntityKey\EntitySource;
 use Tcrawf\Zebra\Frame\FrameFactory;
 use Tcrawf\Zebra\Frame\FrameInterface;
 use Tcrawf\Zebra\Frame\FrameRepositoryInterface;
+use Tcrawf\Zebra\Project\ProjectRepositoryInterface;
 use Tcrawf\Zebra\Role\RoleInterface;
 use Tcrawf\Zebra\Timezone\TimezoneFormatter;
 use Tcrawf\Zebra\User\UserRepositoryInterface;
@@ -27,6 +29,7 @@ use Tcrawf\Zebra\Uuid\Uuid;
 
 class EditCommand extends Command
 {
+    use ActivityResolutionTrait;
     use PhpUnitDetectionTrait;
 
     public function __construct(
@@ -34,7 +37,8 @@ class EditCommand extends Command
         private readonly TimezoneFormatter $timezoneFormatter,
         private readonly ActivityRepositoryInterface $activityRepository,
         private readonly UserRepositoryInterface $userRepository,
-        private readonly FrameAutocompletion $autocompletion
+        private readonly FrameAutocompletion $autocompletion,
+        private readonly ProjectRepositoryInterface $projectRepository
     ) {
         parent::__construct();
     }
@@ -45,7 +49,14 @@ class EditCommand extends Command
             ->setName('edit')
             ->setDescription('Edit a frame')
             ->addArgument('frame', InputArgument::OPTIONAL, 'Frame UUID or index (-1 for last, -2 for second-to-last)')
-            ->addOption('editor', null, InputOption::VALUE_OPTIONAL, 'Editor command (default: $EDITOR or $VISUAL)');
+            ->addOption('editor', null, InputOption::VALUE_OPTIONAL, 'Editor command (default: $EDITOR or $VISUAL)')
+            ->addOption('start', null, InputOption::VALUE_REQUIRED, 'Start time in local timezone')
+            ->addOption('stop', null, InputOption::VALUE_REQUIRED, 'Stop time in local timezone (empty to clear)')
+            ->addOption('activity', 'a', InputOption::VALUE_REQUIRED, 'Activity alias or ID')
+            ->addOption('description', 'd', InputOption::VALUE_REQUIRED, 'Description/notes')
+            ->addOption('individual', null, InputOption::VALUE_NONE, 'Set frame as individual (no role)')
+            ->addOption('no-individual', null, InputOption::VALUE_NONE, 'Set frame as non-individual (requires role)')
+            ->addOption('role', 'r', InputOption::VALUE_REQUIRED, 'Role ID');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -67,6 +78,18 @@ class EditCommand extends Command
         // frameResult is an array with 'frame' and 'isCurrent' keys
         $frame = $frameResult['frame'];
         $isCurrentFrame = $frameResult['isCurrent'];
+
+        $hasEditingFlags = $input->getOption('start') !== null
+            || $input->getOption('stop') !== null
+            || $input->getOption('activity') !== null
+            || $input->getOption('description') !== null
+            || $input->getOption('individual')
+            || $input->getOption('no-individual')
+            || $input->getOption('role') !== null;
+
+        if ($hasEditingFlags) {
+            return $this->executeWithFlags($input, $io, $frame, $isCurrentFrame);
+        }
 
         // Create JSON template in local timezone format (YYYY-MM-DD HH:mm:ss) like watson
         // Note: issue_keys are automatically extracted from description by FrameFactory
@@ -276,6 +299,176 @@ class EditCommand extends Command
                 $text = $editedJson; // Use edited text for next iteration
             }
         }
+    }
+
+    /**
+     * Apply edits to a frame using CLI flags (non-interactive mode).
+     *
+     * @param InputInterface $input
+     * @param SymfonyStyle $io
+     * @param FrameInterface $frame
+     * @param bool $isCurrentFrame
+     * @return int Command exit code
+     */
+    private function executeWithFlags(
+        InputInterface $input,
+        SymfonyStyle $io,
+        FrameInterface $frame,
+        bool $isCurrentFrame
+    ): int {
+        $activity = $frame->activity;
+        $isIndividual = $frame->isIndividual;
+        $role = $frame->role;
+        $description = $frame->description;
+        $startTime = $frame->startTime->utc();
+        $stopTime = $frame->stopTime?->utc();
+
+        // Resolve activity
+        $activityIdentifier = $input->getOption('activity');
+        if ($activityIdentifier !== null) {
+            $newActivity = $this->resolveActivity($activityIdentifier, $io);
+            if ($newActivity === null) {
+                $io->error("Activity '{$activityIdentifier}' not found.");
+                return Command::FAILURE;
+            }
+            $activity = $newActivity;
+        }
+
+        // Resolve description
+        $descriptionOption = $input->getOption('description');
+        if ($descriptionOption !== null) {
+            $description = $descriptionOption;
+        }
+
+        // Resolve isIndividual (--individual and --no-individual are mutually exclusive)
+        if ($input->getOption('individual') && $input->getOption('no-individual')) {
+            $io->error('Cannot use --individual and --no-individual together.');
+            return Command::FAILURE;
+        }
+        if ($input->getOption('individual')) {
+            $isIndividual = true;
+        } elseif ($input->getOption('no-individual')) {
+            $isIndividual = false;
+        }
+
+        // Resolve role
+        $roleOption = $input->getOption('role');
+        if ($roleOption !== null) {
+            if ($isIndividual) {
+                $io->error('Cannot set --role for individual frames. Remove --individual first.');
+                return Command::FAILURE;
+            }
+            if (!ctype_digit($roleOption)) {
+                $io->error('Role must be a numeric ID.');
+                return Command::FAILURE;
+            }
+            $newRole = $this->validateAndGetRole((int) $roleOption, $io);
+            if ($newRole === null) {
+                return Command::FAILURE;
+            }
+            $role = $newRole;
+        }
+
+        // Clear role when switching to individual
+        if ($isIndividual && $role !== null) {
+            $role = null;
+        }
+
+        // Validate: non-individual frames must have a role
+        if (!$isIndividual && $role === null) {
+            $io->error('Non-individual frames must have a role. Use --role or --individual.');
+            return Command::FAILURE;
+        }
+
+        // Resolve start time
+        $startOption = $input->getOption('start');
+        if ($startOption !== null) {
+            try {
+                $startTime = $this->timezoneFormatter->parseLocalToUtc($startOption);
+            } catch (\Exception $e) {
+                $io->error("Invalid start time format: {$startOption}");
+                return Command::FAILURE;
+            }
+        }
+
+        // Resolve stop time (empty string clears it)
+        $stopOption = $input->getOption('stop');
+        if ($stopOption !== null) {
+            if ($stopOption === '') {
+                $stopTime = null;
+            } else {
+                try {
+                    $stopTime = $this->timezoneFormatter->parseLocalToUtc($stopOption);
+                } catch (\Exception $e) {
+                    $io->error("Invalid stop time format: {$stopOption}");
+                    return Command::FAILURE;
+                }
+            }
+        }
+
+        // Validate stop > start
+        if ($stopTime !== null && $stopTime->lt($startTime)) {
+            $io->error('Stop time must be after start time.');
+            return Command::FAILURE;
+        }
+
+        // Validate times are not in the future
+        $now = Carbon::now()->utc();
+        if ($startTime->gt($now)) {
+            $io->error('Start time cannot be in the future.');
+            return Command::FAILURE;
+        }
+        if ($stopTime !== null && $stopTime->gt($now)) {
+            $io->error('Stop time cannot be in the future.');
+            return Command::FAILURE;
+        }
+
+        // Assert ActivityInterface is Activity for FrameFactory
+        if (!($activity instanceof \Tcrawf\Zebra\Activity\Activity)) {
+            $io->error('Activity must be an instance of Activity.');
+            return Command::FAILURE;
+        }
+
+        $uuid = Uuid::fromHex($frame->uuid);
+
+        $updatedFrame = FrameFactory::create(
+            $startTime->utc(),
+            $stopTime?->utc(),
+            $activity,
+            $isIndividual,
+            $role,
+            $description,
+            null,
+            $uuid
+        );
+
+        if ($isCurrentFrame && $updatedFrame->isActive()) {
+            $this->frameRepository->saveCurrent($updatedFrame);
+        } elseif ($isCurrentFrame && !$updatedFrame->isActive()) {
+            $this->frameRepository->save($updatedFrame);
+            $this->frameRepository->clearCurrent();
+        } else {
+            $this->frameRepository->update($updatedFrame);
+        }
+
+        $io->writeln('<info>Frame updated successfully.</info>');
+        return Command::SUCCESS;
+    }
+
+    /**
+     * Get activity repository instance (required by ActivityResolutionTrait).
+     */
+    protected function getActivityRepository(): ActivityRepositoryInterface
+    {
+        return $this->activityRepository;
+    }
+
+    /**
+     * Get project repository instance (required by ActivityResolutionTrait).
+     */
+    protected function getProjectRepository(): ProjectRepositoryInterface
+    {
+        return $this->projectRepository;
     }
 
     /**

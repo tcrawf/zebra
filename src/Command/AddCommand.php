@@ -67,7 +67,8 @@ class AddCommand extends Command
                 null,
                 InputOption::VALUE_NONE,
                 'Mark frame as individual action (does not require a role)'
-            );
+            )
+            ->addOption('activity', 'a', InputOption::VALUE_REQUIRED, 'Activity alias or ID');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -81,6 +82,14 @@ class AddCommand extends Command
 
         // Use description from + syntax if provided, otherwise use option
         $description = $descriptionFromPlus ?? $input->getOption('description');
+
+        // Fall back to --activity option if positional argument was not provided
+        if ($activityIdentifier === null) {
+            $activityOption = $input->getOption('activity');
+            if ($activityOption !== null) {
+                $activityIdentifier = $activityOption;
+            }
+        }
 
         // If no activity found, try to find last activity for issue keys in description
         $activity = null;
