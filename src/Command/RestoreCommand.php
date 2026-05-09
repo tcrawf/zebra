@@ -271,10 +271,10 @@ class RestoreCommand extends Command
     private function selectBackup(SymfonyStyle $io, InputInterface $input, string $backupsDir, string $type): ?string
     {
         // Get backup files based on type
-        $pattern = match ($type) {
-            'frames' => 'frames-*.json',
-            'timesheets' => 'timesheets-*.json',
-            'local-projects' => 'local-projects-*.json',
+        [$pattern, $prefix] = match ($type) {
+            'frames' => ['frames-*.json', 'frames-'],
+            'timesheets' => ['timesheets-*.json', 'timesheets-'],
+            'local-projects' => ['local-projects-*.json', 'local-projects-'],
             default => throw new \InvalidArgumentException("Invalid type: {$type}")
         };
         $backupFiles = glob($backupsDir . DIRECTORY_SEPARATOR . $pattern);
@@ -296,12 +296,6 @@ class RestoreCommand extends Command
             // Parse timestamp from filename:
             // frames-YYYY-MM-DD_HH-MM-SS-UTC.json, timesheets-YYYY-MM-DD_HH-MM-SS-UTC.json,
             // or local-projects-YYYY-MM-DD_HH-MM-SS-UTC.json
-            $prefix = match ($type) {
-                'frames' => 'frames-',
-                'timesheets' => 'timesheets-',
-                'local-projects' => 'local-projects-',
-                default => throw new \InvalidArgumentException("Invalid type: {$type}")
-            };
             $timestampPart = str_replace([$prefix, '-UTC.json'], '', $filename);
             $timestamp = Carbon::createFromFormat('Y-m-d_H-i-s', $timestampPart, 'UTC');
 

@@ -9,7 +9,7 @@ namespace Tcrawf\Zebra;
  */
 final class Version
 {
-    public const string VERSION = '1.6.1-alpha';
+    public const string VERSION = '1.6.2-alpha';
 
     /**
      * Get the current application version.

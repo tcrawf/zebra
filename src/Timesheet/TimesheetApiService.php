@@ -209,7 +209,7 @@ final class TimesheetApiService implements TimesheetApiServiceInterface
         }
 
         // Validate time is a multiple of 0.25
-        if (isset($data['time']) && is_numeric($data['time'])) {
+        if (is_numeric($data['time'])) {
             $time = (float) $data['time'];
             $remainder = fmod($time * 100, 25);
             if (abs($remainder) > 0.0001) {
