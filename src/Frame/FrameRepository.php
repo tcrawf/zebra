@@ -121,23 +121,25 @@ class FrameRepository implements FrameRepositoryInterface
         $fromTime = $this->convertToCarbon($from);
         $toTime = $to !== null ? $this->convertToCarbon($to) : null;
 
-        $allFrames = $this->all();
+        $framesData = $this->loadFromStorage();
         $filteredFrames = [];
+        $fromTimestamp = $fromTime->timestamp;
+        $toTimestamp = $toTime?->timestamp;
 
-        foreach ($allFrames as $frame) {
-            $startTime = $frame->startTime;
-
-            // Frame must start at or after the "from" time
-            if ($startTime->lt($fromTime)) {
+        foreach ($framesData as $frameData) {
+            if (!$this->rawFrameStartsInDateRange($frameData, $fromTimestamp, $toTimestamp)) {
                 continue;
             }
 
-            // If "to" is provided, frame must start at or before the "to" time
-            if ($toTime !== null && $startTime->gt($toTime)) {
+            try {
+                $filteredFrames[] = FrameFactory::fromArray(
+                    $frameData,
+                    $this->activityRepository,
+                    $this->userRepository
+                );
+            } catch (\Exception $e) {
                 continue;
             }
-
-            $filteredFrames[] = $frame;
         }
 
         return $filteredFrames;
@@ -165,121 +167,37 @@ class FrameRepository implements FrameRepositoryInterface
         CarbonInterface|int|string|null $to = null,
         bool $includePartialFrames = false
     ): array {
-        $allFrames = $this->all();
+        $framesData = $this->loadFromStorage();
         $filteredFrames = [];
 
         // Convert date range to Carbon if provided
         $fromTime = $from !== null ? $this->convertToCarbon($from)->utc() : null;
         $toTime = $to !== null ? $this->convertToCarbon($to)->utc() : null;
+        $fromTimestamp = $fromTime?->timestamp;
+        $toTimestamp = $toTime?->timestamp;
+        $nowTimestamp = Carbon::now()->utc()->timestamp;
 
-        foreach ($allFrames as $frame) {
+        foreach ($framesData as $frameData) {
             try {
-                $activity = $frame->activity;
-                // Extract project ID from entityKey (for Zebra source, use int ID)
-                $frameProjectId = $activity->projectEntityKey->source === EntitySource::Zebra
-                    && is_int($activity->projectEntityKey->id)
-                    ? $activity->projectEntityKey->id
-                    : null;
-                $frameIssueKeys = $frame->issueKeys;
-                $frameStart = $frame->startTime;
-                $frameStop = $frame->stopTime;
-
-                // Filter by project IDs (only for Zebra source projects)
                 if (
-                    !empty($projectIds)
-                    && ($frameProjectId === null || !in_array($frameProjectId, $projectIds, true))
+                    !$this->rawFrameMatchesIssueFilters($frameData, $issueKeys, $ignoreIssueKeys)
+                    || !$this->rawFrameMatchesDateRange(
+                        $frameData,
+                        $fromTimestamp,
+                        $toTimestamp,
+                        $includePartialFrames,
+                        $nowTimestamp
+                    )
                 ) {
                     continue;
                 }
 
-                // Ignore project IDs (only for Zebra source projects)
-                if (
-                    !empty($ignoreProjectIds)
-                    && $frameProjectId !== null
-                    && in_array($frameProjectId, $ignoreProjectIds, true)
-                ) {
+                $frame = FrameFactory::fromArray($frameData, $this->activityRepository, $this->userRepository);
+                if (!$this->frameMatchesProjectFilters($frame, $projectIds, $ignoreProjectIds)) {
                     continue;
                 }
 
-                // Filter by issue keys (frame must have at least one matching issue key)
-                if (!empty($issueKeys)) {
-                    $hasMatchingIssue = false;
-                    foreach ($issueKeys as $issueKey) {
-                        if (in_array($issueKey, $frameIssueKeys, true)) {
-                            $hasMatchingIssue = true;
-                            break;
-                        }
-                    }
-                    if (!$hasMatchingIssue) {
-                        continue;
-                    }
-                }
-
-                // Ignore issue keys (frame must not have any of these issue keys)
-                if (!empty($ignoreIssueKeys)) {
-                    $hasIgnoredIssue = false;
-                    foreach ($ignoreIssueKeys as $ignoreIssueKey) {
-                        if (in_array($ignoreIssueKey, $frameIssueKeys, true)) {
-                            $hasIgnoredIssue = true;
-                            break;
-                        }
-                    }
-                    if ($hasIgnoredIssue) {
-                        continue;
-                    }
-                }
-
-                // Filter by date range
-                if ($fromTime !== null || $toTime !== null) {
-                    // Ensure frame times are in UTC for comparison
-                    $frameStartUtc = $frameStart->utc();
-                    // If frame has no stop time, use current time for overlap calculation
-                    $effectiveStop = ($frameStop !== null ? $frameStop->utc() : Carbon::now()->utc());
-
-                    if ($includePartialFrames) {
-                        // Include frames that overlap the date range
-                        // Frame overlaps if: frame.start <= toTime AND frame.stop >= fromTime
-                        // We know at least one of fromTime or toTime is not null from outer condition
-                        $overlaps = false;
-                        if ($fromTime === null) {
-                            // Only toTime is set: include if frame starts before or at toTime
-                            $overlaps = $frameStartUtc->lte($toTime);
-                        } elseif ($toTime === null) {
-                            // Only fromTime is set: include if frame ends after or at fromTime
-                            $overlaps = $effectiveStop->gte($fromTime);
-                        } else {
-                            // Both are set: frame overlaps if it starts before/at toTime AND ends after/at fromTime
-                            $overlaps = $frameStartUtc->lte($toTime) && $effectiveStop->gte($fromTime);
-                        }
-
-                        if (!$overlaps) {
-                            continue;
-                        }
-
-                        // If partial frames are included and frame extends beyond the range,
-                        // we still include it (the full frame, not a partial one)
-                        // This matches the Python behavior where partial frames are returned
-                        // but modified to only include the overlapping portion
-                        // For simplicity, we return the full frame here
-                        $filteredFrames[] = $frame;
-                    } else {
-                        // Only include frames that are completely within the date range
-                        // Frame must start at or after fromTime
-                        if ($fromTime !== null && $frameStartUtc->lt($fromTime)) {
-                            continue;
-                        }
-
-                        // Frame must end at or before toTime
-                        if ($toTime !== null && $effectiveStop->gt($toTime)) {
-                            continue;
-                        }
-
-                        $filteredFrames[] = $frame;
-                    }
-                } else {
-                    // No date range filtering, add frame if it passed other filters
-                    $filteredFrames[] = $frame;
-                }
+                $filteredFrames[] = $frame;
             } catch (\Exception $e) {
                 // Skip frames that cannot be processed (e.g., missing activity or invalid data)
                 continue;
@@ -287,6 +205,169 @@ class FrameRepository implements FrameRepositoryInterface
         }
 
         return $filteredFrames;
+    }
+
+    /**
+     * @param array<string, mixed> $frameData
+     */
+    private function rawFrameStartsInDateRange(array $frameData, int $fromTimestamp, ?int $toTimestamp): bool
+    {
+        $startTimestamp = $this->getRawTimestamp($frameData, 'start');
+        if ($startTimestamp === null) {
+            return false;
+        }
+
+        if ($startTimestamp < $fromTimestamp) {
+            return false;
+        }
+
+        return $toTimestamp === null || $startTimestamp <= $toTimestamp;
+    }
+
+    /**
+     * @param array<string, mixed> $frameData
+     * @param array<string>|null $issueKeys
+     * @param array<string>|null $ignoreIssueKeys
+     */
+    private function rawFrameMatchesIssueFilters(
+        array $frameData,
+        ?array $issueKeys,
+        ?array $ignoreIssueKeys
+    ): bool {
+        if (empty($issueKeys) && empty($ignoreIssueKeys)) {
+            return true;
+        }
+
+        $frameIssueKeys = $this->getRawIssueKeys($frameData);
+
+        if (!empty($issueKeys)) {
+            $hasMatchingIssue = false;
+            foreach ($issueKeys as $issueKey) {
+                if (in_array($issueKey, $frameIssueKeys, true)) {
+                    $hasMatchingIssue = true;
+                    break;
+                }
+            }
+
+            if (!$hasMatchingIssue) {
+                return false;
+            }
+        }
+
+        if (!empty($ignoreIssueKeys)) {
+            foreach ($ignoreIssueKeys as $ignoreIssueKey) {
+                if (in_array($ignoreIssueKey, $frameIssueKeys, true)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $frameData
+     */
+    private function rawFrameMatchesDateRange(
+        array $frameData,
+        ?int $fromTimestamp,
+        ?int $toTimestamp,
+        bool $includePartialFrames,
+        int $nowTimestamp
+    ): bool {
+        if ($fromTimestamp === null && $toTimestamp === null) {
+            return true;
+        }
+
+        $startTimestamp = $this->getRawTimestamp($frameData, 'start');
+        if ($startTimestamp === null) {
+            return false;
+        }
+
+        $stopTimestamp = $this->getRawTimestamp($frameData, 'stop') ?? $nowTimestamp;
+
+        if ($includePartialFrames) {
+            if ($fromTimestamp === null) {
+                return $startTimestamp <= $toTimestamp;
+            }
+
+            if ($toTimestamp === null) {
+                return $stopTimestamp >= $fromTimestamp;
+            }
+
+            return $startTimestamp <= $toTimestamp && $stopTimestamp >= $fromTimestamp;
+        }
+
+        if ($fromTimestamp !== null && $startTimestamp < $fromTimestamp) {
+            return false;
+        }
+
+        return $toTimestamp === null || $stopTimestamp <= $toTimestamp;
+    }
+
+    /**
+     * @param array<string, mixed> $frameData
+     */
+    private function getRawTimestamp(array $frameData, string $key): ?int
+    {
+        $value = $frameData[$key] ?? null;
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_string($value) && is_numeric($value)) {
+            return (int) $value;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $frameData
+     * @return array<string>
+     */
+    private function getRawIssueKeys(array $frameData): array
+    {
+        if (isset($frameData['issues']) && is_array($frameData['issues'])) {
+            return array_values(array_filter($frameData['issues'], static fn($issueKey) => is_string($issueKey)));
+        }
+
+        $description = $frameData['desc'] ?? '';
+        if (!is_string($description) || $description === '') {
+            return [];
+        }
+
+        preg_match_all('/[A-Z]{2,6}-\d{1,5}/', $description, $matches);
+
+        return array_values(array_unique($matches[0]));
+    }
+
+    /**
+     * @param array<int>|null $projectIds
+     * @param array<int>|null $ignoreProjectIds
+     */
+    private function frameMatchesProjectFilters(
+        FrameInterface $frame,
+        ?array $projectIds,
+        ?array $ignoreProjectIds
+    ): bool {
+        if (empty($projectIds) && empty($ignoreProjectIds)) {
+            return true;
+        }
+
+        $activity = $frame->activity;
+        $frameProjectId = $activity->projectEntityKey->source === EntitySource::Zebra
+            && is_int($activity->projectEntityKey->id)
+            ? $activity->projectEntityKey->id
+            : null;
+
+        if (!empty($projectIds) && ($frameProjectId === null || !in_array($frameProjectId, $projectIds, true))) {
+            return false;
+        }
+
+        return empty($ignoreProjectIds)
+            || $frameProjectId === null
+            || !in_array($frameProjectId, $ignoreProjectIds, true);
     }
 
     /**

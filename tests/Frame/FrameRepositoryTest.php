@@ -1232,6 +1232,64 @@ class FrameRepositoryTest extends RepositoryTestCase
         $this->assertEquals($uuid2->getHex(), $frames[0]->uuid);
     }
 
+    public function testFilterDoesNotHydrateRowsExcludedByRawDateFilter(): void
+    {
+        $uuid1 = Uuid::random();
+        $uuid2 = Uuid::random();
+        $start1 = Carbon::now()->subDays(5);
+        $start2 = Carbon::now()->subHour();
+        $frame1 = TestEntityFactory::createFrame(
+            $uuid1,
+            $start1,
+            $start1->copy()->addHour(),
+            $this->activity,
+            false,
+            $this->role
+        );
+        $frame2 = TestEntityFactory::createFrame(
+            $uuid2,
+            $start2,
+            $start2->copy()->addHour(),
+            $this->activity,
+            false,
+            $this->role
+        );
+
+        $storage = $this->createMock(FileStorageInterface::class);
+        $storage
+            ->expects($this->once())
+            ->method('read')
+            ->willReturn([
+                $uuid1->getHex() => $frame1->toArray(),
+                $uuid2->getHex() => $frame2->toArray()
+            ]);
+
+        $storageFactory = $this->createMock(FrameFileStorageFactoryInterface::class);
+        $storageFactory
+            ->expects($this->once())
+            ->method('create')
+            ->with('test_frames.json')
+            ->willReturn($storage);
+
+        $activityRepository = $this->createMock(ActivityRepositoryInterface::class);
+        $activityRepository
+            ->expects($this->once())
+            ->method('get')
+            ->willReturn($this->activity);
+
+        $userRepository = $this->createMock(UserRepositoryInterface::class);
+        $userRepository
+            ->expects($this->once())
+            ->method('getCurrentUserRoleById')
+            ->willReturn($this->role);
+
+        $repository = new FrameRepository($storageFactory, $activityRepository, $userRepository, 'test_frames.json');
+        $frames = $repository->filter(from: Carbon::now()->subDay(), to: Carbon::now());
+
+        $this->assertCount(1, $frames);
+        $this->assertEquals($uuid2->getHex(), $frames[0]->uuid);
+    }
+
     public function testFilterWithIncludePartialFrames(): void
     {
         $uuid1 = Uuid::random();
