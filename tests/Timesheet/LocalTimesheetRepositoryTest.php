@@ -384,6 +384,71 @@ class LocalTimesheetRepositoryTest extends TestCase
         $this->assertEquals($timesheet2->uuid, $result[0]->uuid);
     }
 
+    public function testGetByDateRangeDoesNotHydrateRowsExcludedByRawDateFilter(): void
+    {
+        $date1 = Carbon::create(2024, 1, 10);
+        $date2 = Carbon::create(2024, 1, 15);
+        $timesheet1 = TimesheetFactory::create(
+            $this->activity,
+            'Description 1',
+            null,
+            1.0,
+            $date1,
+            $this->role,
+            false,
+            []
+        );
+        $timesheet2 = TimesheetFactory::create(
+            $this->activity,
+            'Description 2',
+            null,
+            2.0,
+            $date2,
+            $this->role,
+            false,
+            []
+        );
+
+        $storage = $this->createMock(FileStorageInterface::class);
+        $storage
+            ->expects($this->once())
+            ->method('read')
+            ->willReturn([
+                $timesheet1->uuid => $timesheet1->toArray(),
+                $timesheet2->uuid => $timesheet2->toArray(),
+            ]);
+
+        $storageFactory = $this->createMock(TimesheetFileStorageFactoryInterface::class);
+        $storageFactory
+            ->expects($this->once())
+            ->method('create')
+            ->with('test_timesheets.json')
+            ->willReturn($storage);
+
+        $activityRepository = $this->createMock(ActivityRepositoryInterface::class);
+        $activityRepository
+            ->expects($this->once())
+            ->method('get')
+            ->willReturn($this->activity);
+
+        $userRepository = $this->createMock(UserRepositoryInterface::class);
+        $userRepository
+            ->expects($this->once())
+            ->method('getCurrentUserRoleById')
+            ->willReturn($this->role);
+
+        $repository = new LocalTimesheetRepository(
+            $storageFactory,
+            $activityRepository,
+            $userRepository,
+            'test_timesheets.json'
+        );
+        $result = $repository->getByDateRange(Carbon::create(2024, 1, 12), Carbon::create(2024, 1, 18));
+
+        $this->assertCount(1, $result);
+        $this->assertEquals($timesheet2->uuid, $result[0]->uuid);
+    }
+
     public function testGetByDateRangeWithOnlyFrom(): void
     {
         $uuid1 = Uuid::random();
@@ -493,6 +558,70 @@ class LocalTimesheetRepositoryTest extends TestCase
         $this->assertContains($timesheet1->uuid, $resultUuids);
         $this->assertContains($timesheet2->uuid, $resultUuids);
         $this->assertNotContains($timesheet3->uuid, $resultUuids);
+    }
+
+    public function testGetByFrameUuidsDoesNotHydrateRowsWithoutMatchingFrameUuid(): void
+    {
+        $date = Carbon::now()->startOfDay();
+        $timesheet1 = TimesheetFactory::create(
+            $this->activity,
+            'Description 1',
+            null,
+            1.0,
+            $date,
+            $this->role,
+            false,
+            ['frame1']
+        );
+        $timesheet2 = TimesheetFactory::create(
+            $this->activity,
+            'Description 2',
+            null,
+            2.0,
+            $date,
+            $this->role,
+            false,
+            ['frame2']
+        );
+
+        $storage = $this->createMock(FileStorageInterface::class);
+        $storage
+            ->expects($this->once())
+            ->method('read')
+            ->willReturn([
+                $timesheet1->uuid => $timesheet1->toArray(),
+                $timesheet2->uuid => $timesheet2->toArray(),
+            ]);
+
+        $storageFactory = $this->createMock(TimesheetFileStorageFactoryInterface::class);
+        $storageFactory
+            ->expects($this->once())
+            ->method('create')
+            ->with('test_timesheets.json')
+            ->willReturn($storage);
+
+        $activityRepository = $this->createMock(ActivityRepositoryInterface::class);
+        $activityRepository
+            ->expects($this->once())
+            ->method('get')
+            ->willReturn($this->activity);
+
+        $userRepository = $this->createMock(UserRepositoryInterface::class);
+        $userRepository
+            ->expects($this->once())
+            ->method('getCurrentUserRoleById')
+            ->willReturn($this->role);
+
+        $repository = new LocalTimesheetRepository(
+            $storageFactory,
+            $activityRepository,
+            $userRepository,
+            'test_timesheets.json'
+        );
+        $result = $repository->getByFrameUuids(['frame2']);
+
+        $this->assertCount(1, $result);
+        $this->assertEquals($timesheet2->uuid, $result[0]->uuid);
     }
 
     public function testUpdate(): void

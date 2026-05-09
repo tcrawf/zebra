@@ -114,8 +114,21 @@ class LocalTimesheetRepository implements LocalTimesheetRepositoryInterface
      */
     public function getByZebraId(int $zebraId): ?TimesheetInterface
     {
-        $allTimesheets = $this->all();
-        return array_find($allTimesheets, fn($timesheet) => $timesheet->zebraId === $zebraId);
+        $timesheetsData = $this->loadFromStorage();
+
+        foreach ($timesheetsData as $timesheetData) {
+            if (($timesheetData['zebraId'] ?? null) !== $zebraId) {
+                continue;
+            }
+
+            try {
+                return $this->hydrateTimesheet($timesheetData);
+            } catch (\Exception $e) {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -132,24 +145,21 @@ class LocalTimesheetRepository implements LocalTimesheetRepositoryInterface
         $fromDate = $this->convertDateToCarbon($from)->setTimezone('Europe/Zurich')->startOfDay();
         $toDate = $to !== null ? $this->convertDateToCarbon($to)->setTimezone('Europe/Zurich')->startOfDay() : null;
 
-        $allTimesheets = $this->all();
+        $timesheetsData = $this->loadFromStorage();
         $filteredTimesheets = [];
+        $fromDateKey = $fromDate->format('Y-m-d');
+        $toDateKey = $toDate?->format('Y-m-d');
 
-        foreach ($allTimesheets as $timesheet) {
-            // Compare dates in Europe/Zurich timezone (timesheet dates are stored in Europe/Zurich)
-            $timesheetDate = $timesheet->date->setTimezone('Europe/Zurich')->startOfDay();
-
-            // Timesheet must be at or after the "from" date
-            if ($timesheetDate->lt($fromDate)) {
+        foreach ($timesheetsData as $timesheetData) {
+            if (!$this->rawTimesheetMatchesDateRange($timesheetData, $fromDateKey, $toDateKey)) {
                 continue;
             }
 
-            // If "to" is provided, timesheet must be at or before the "to" date
-            if ($toDate !== null && $timesheetDate->gt($toDate)) {
+            try {
+                $filteredTimesheets[] = $this->hydrateTimesheet($timesheetData);
+            } catch (\Exception $e) {
                 continue;
             }
-
-            $filteredTimesheets[] = $timesheet;
         }
 
         return $filteredTimesheets;
@@ -164,16 +174,22 @@ class LocalTimesheetRepository implements LocalTimesheetRepositoryInterface
      */
     public function getByFrameUuids(array $frameUuids): array
     {
-        $allTimesheets = $this->all();
+        if (empty($frameUuids)) {
+            return [];
+        }
+
+        $timesheetsData = $this->loadFromStorage();
         $filteredTimesheets = [];
 
-        foreach ($allTimesheets as $timesheet) {
-            // Check if any of the timesheet's frame UUIDs match any of the provided frame UUIDs
-            foreach ($timesheet->frameUuids as $timesheetFrameUuid) {
-                if (in_array($timesheetFrameUuid, $frameUuids, true)) {
-                    $filteredTimesheets[] = $timesheet;
-                    break; // Only add once per timesheet
-                }
+        foreach ($timesheetsData as $timesheetData) {
+            if (!$this->rawTimesheetMatchesFrameUuids($timesheetData, $frameUuids)) {
+                continue;
+            }
+
+            try {
+                $filteredTimesheets[] = $this->hydrateTimesheet($timesheetData);
+            } catch (\Exception $e) {
+                continue;
             }
         }
 
@@ -198,12 +214,18 @@ class LocalTimesheetRepository implements LocalTimesheetRepositoryInterface
      */
     public function getUnsynced(): array
     {
-        $allTimesheets = $this->all();
+        $timesheetsData = $this->loadFromStorage();
         $unsyncedTimesheets = [];
 
-        foreach ($allTimesheets as $timesheet) {
-            if ($timesheet->zebraId === null) {
-                $unsyncedTimesheets[] = $timesheet;
+        foreach ($timesheetsData as $timesheetData) {
+            if (($timesheetData['zebraId'] ?? null) !== null) {
+                continue;
+            }
+
+            try {
+                $unsyncedTimesheets[] = $this->hydrateTimesheet($timesheetData);
+            } catch (\Exception $e) {
+                continue;
             }
         }
 
@@ -292,6 +314,76 @@ class LocalTimesheetRepository implements LocalTimesheetRepositoryInterface
         }
         $localParsed = $timezoneFormatter->parseLocalToUtc($value);
         return $localParsed->setTimezone('Europe/Zurich');
+    }
+
+    /**
+     * @param array<string, mixed> $timesheetData
+     */
+    private function hydrateTimesheet(array $timesheetData): TimesheetInterface
+    {
+        return TimesheetFactory::fromArray(
+            $timesheetData,
+            $this->activityRepository,
+            $this->userRepository
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $timesheetData
+     */
+    private function rawTimesheetMatchesDateRange(array $timesheetData, string $fromDateKey, ?string $toDateKey): bool
+    {
+        $timesheetDateKey = $this->getRawTimesheetDateKey($timesheetData);
+        if ($timesheetDateKey === null) {
+            return false;
+        }
+
+        if ($timesheetDateKey < $fromDateKey) {
+            return false;
+        }
+
+        return $toDateKey === null || $timesheetDateKey <= $toDateKey;
+    }
+
+    /**
+     * @param array<string, mixed> $timesheetData
+     */
+    private function getRawTimesheetDateKey(array $timesheetData): ?string
+    {
+        $date = $timesheetData['date'] ?? null;
+        if (is_string($date) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return $date;
+        }
+
+        if (is_int($date) || is_string($date)) {
+            try {
+                return $this->convertDateToCarbon($date)->setTimezone('Europe/Zurich')->startOfDay()->format('Y-m-d');
+            } catch (\Exception $e) {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $timesheetData
+     * @param array<string> $frameUuids
+     */
+    private function rawTimesheetMatchesFrameUuids(array $timesheetData, array $frameUuids): bool
+    {
+        $timesheetFrameUuids = $timesheetData['frameUuids'] ?? null;
+        if (!is_array($timesheetFrameUuids)) {
+            return false;
+        }
+
+        foreach ($timesheetFrameUuids as $timesheetFrameUuid) {
+            if (is_string($timesheetFrameUuid) && in_array($timesheetFrameUuid, $frameUuids, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
 
