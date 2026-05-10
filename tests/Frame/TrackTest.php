@@ -23,6 +23,8 @@ use Tcrawf\Zebra\Role\Role;
 use Tcrawf\Zebra\Role\RoleInterface;
 use Tcrawf\Zebra\Timezone\TimezoneFormatter;
 use Tcrawf\Zebra\User\UserRepositoryInterface;
+use Tcrawf\Zebra\Uuid\Uuid;
+use Tcrawf\Zebra\Uuid\UuidInterface;
 use bovigo\vfs\vfsStream;
 use bovigo\vfs\vfsStreamDirectory;
 
@@ -38,13 +40,24 @@ class TrackTest extends TestCase
     private Activity $activity;
     private RoleInterface $role;
 
+    /**
+     * When set, {@see FrameRepositoryInterface::allocateUnusedFrameUuid()} returns this value instead of a random UUID.
+     */
+    private ?UuidInterface $allocateUnusedForTest = null;
+
     protected function setUp(): void
     {
+        $this->allocateUnusedForTest = null;
         $this->root = vfsStream::setup('test');
         $this->testHomeDir = $this->root->url();
         putenv('HOME=' . $this->testHomeDir);
 
         $this->frameRepository = $this->createMock(FrameRepositoryInterface::class);
+        $this->frameRepository
+            ->method('allocateUnusedFrameUuid')
+            ->willReturnCallback(function (): UuidInterface {
+                return $this->allocateUnusedForTest ?? Uuid::random();
+            });
         $this->config = new ConfigFileStorage();
         $this->projectRepository = $this->createMock(ProjectRepositoryInterface::class);
         $this->userRepository = $this->createMock(UserRepositoryInterface::class);
@@ -208,6 +221,10 @@ class TrackTest extends TestCase
             ->method('getCurrent')
             ->willReturn($existingFrame);
 
+        $this->frameRepository
+            ->expects($this->never())
+            ->method('allocateUnusedFrameUuid');
+
         try {
             $this->track->start($this->activity);
             $this->fail('Expected FrameAlreadyStartedException was not thrown');
@@ -261,6 +278,10 @@ class TrackTest extends TestCase
             ->expects($this->never())
             ->method('getCurrentUserDefaultRole');
 
+        $this->frameRepository
+            ->expects($this->never())
+            ->method('allocateUnusedFrameUuid');
+
         $this->expectException(InvalidTimeException::class);
         $this->expectExceptionMessage('Cannot start a frame in the future');
 
@@ -290,6 +311,10 @@ class TrackTest extends TestCase
         $this->userRepository
             ->expects($this->never())
             ->method('getCurrentUserDefaultRole');
+
+        $this->frameRepository
+            ->expects($this->never())
+            ->method('allocateUnusedFrameUuid');
 
         $this->expectException(InvalidTimeException::class);
         $this->expectExceptionMessage('Cannot start a frame before the previous frame ends');
@@ -351,6 +376,10 @@ class TrackTest extends TestCase
             ->expects($this->once())
             ->method('getCurrentUserDefaultRole')
             ->willReturn(null);
+
+        $this->frameRepository
+            ->expects($this->never())
+            ->method('allocateUnusedFrameUuid');
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('No default role found');
@@ -542,6 +571,10 @@ class TrackTest extends TestCase
             ->expects($this->never())
             ->method('save');
 
+        $this->frameRepository
+            ->expects($this->never())
+            ->method('allocateUnusedFrameUuid');
+
         $this->expectException(InvalidTimeException::class);
         $this->expectExceptionMessage('Cannot add a frame where start time is after stop time');
 
@@ -561,6 +594,10 @@ class TrackTest extends TestCase
         $this->frameRepository
             ->expects($this->never())
             ->method('save');
+
+        $this->frameRepository
+            ->expects($this->never())
+            ->method('allocateUnusedFrameUuid');
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('No default role found');
@@ -840,5 +877,69 @@ class TrackTest extends TestCase
         $frame = $this->track->start($this->activity, null, null, false);
 
         $this->assertTrue($frame->isActive());
+    }
+
+    public function testStartUsesUuidFromAllocateUnusedFrameUuid(): void
+    {
+        $allocated = Uuid::fromHex('a7b8c9d1');
+        $this->allocateUnusedForTest = $allocated;
+
+        $this->userRepository
+            ->expects($this->once())
+            ->method('getCurrentUserDefaultRole')
+            ->willReturn($this->role);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('getCurrent')
+            ->willReturn(null);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('all')
+            ->willReturn([]);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('allocateUnusedFrameUuid');
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('saveCurrent')
+            ->with($this->callback(function (Frame $frame) use ($allocated) {
+                return $frame->uuid === $allocated->getHex();
+            }));
+
+        $frame = $this->track->start($this->activity);
+
+        $this->assertSame($allocated->getHex(), $frame->uuid);
+    }
+
+    public function testAddUsesUuidFromAllocateUnusedFrameUuid(): void
+    {
+        $allocated = Uuid::fromHex('b8c9d1e2');
+        $this->allocateUnusedForTest = $allocated;
+        $fromTime = Carbon::now()->subHours(2)->utc();
+        $toTime = Carbon::now()->subHour()->utc();
+
+        $this->userRepository
+            ->expects($this->once())
+            ->method('getCurrentUserDefaultRole')
+            ->willReturn($this->role);
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('allocateUnusedFrameUuid');
+
+        $this->frameRepository
+            ->expects($this->once())
+            ->method('save')
+            ->with($this->callback(function (Frame $frame) use ($allocated) {
+                return $frame->uuid === $allocated->getHex();
+            }));
+
+        $frame = $this->track->add($this->activity, $fromTime, $toTime);
+
+        $this->assertSame($allocated->getHex(), $frame->uuid);
     }
 }

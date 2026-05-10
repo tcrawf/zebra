@@ -7,6 +7,7 @@ namespace Tcrawf\Zebra\Frame;
 use Carbon\CarbonInterface;
 use Tcrawf\Zebra\Activity\ActivityInterface;
 use Tcrawf\Zebra\Role\RoleInterface;
+use Tcrawf\Zebra\Uuid\UuidInterface;
 
 /**
  * Interface for frame repository.
@@ -22,8 +23,17 @@ interface FrameRepositoryInterface
      * @return void
      * @throws \InvalidArgumentException
      *   If the frame does not have a stop datetime
+     * @throws \Tcrawf\Zebra\Exception\FrameUuidCollisionException
+     *   If the UUID already exists with different data
      */
     public function save(FrameInterface $frame): void;
+
+    /**
+     * Allocate a frame UUID not used by any persisted frame or the current frame slot.
+     *
+     * @return UuidInterface
+     */
+    public function allocateUnusedFrameUuid(): UuidInterface;
 
     /**
      * Get all frames from storage.
