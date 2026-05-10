@@ -11,6 +11,7 @@ use RuntimeException;
 use Tcrawf\Zebra\Activity\Activity;
 use Tcrawf\Zebra\Activity\ActivityRepositoryInterface;
 use Tcrawf\Zebra\EntityKey\EntityKey;
+use Tcrawf\Zebra\Exception\FrameUuidCollisionException;
 use Tcrawf\Zebra\FileStorage\FileStorageInterface;
 use Tcrawf\Zebra\Frame\FrameFileStorageFactoryInterface;
 use Tcrawf\Zebra\Frame\FrameRepository;
@@ -149,6 +150,160 @@ class FrameRepositoryTest extends RepositoryTestCase
             }));
 
         $this->repository->save($frame);
+    }
+
+    public function testSaveThrowsFrameUuidCollisionExceptionWhenDifferentData(): void
+    {
+        $uuid = Uuid::random();
+        $startTime = Carbon::now()->subHours(2);
+        $stopTime = Carbon::now()->subHour();
+        $existing = TestEntityFactory::createFrame(
+            $uuid,
+            $startTime,
+            $stopTime,
+            $this->activity,
+            false,
+            $this->role,
+            'First'
+        );
+
+        $conflict = TestEntityFactory::createFrame(
+            $uuid,
+            Carbon::now()->subHour(),
+            Carbon::now(),
+            $this->activity,
+            false,
+            $this->role,
+            'Second'
+        );
+
+        $this->storage->method('read')->willReturn([$uuid->getHex() => $existing->toArray()]);
+
+        $this->expectException(FrameUuidCollisionException::class);
+        $this->expectExceptionMessage('already exists with different data');
+
+        $this->repository->save($conflict);
+    }
+
+    public function testSaveNoOpWhenPayloadIdentical(): void
+    {
+        $uuid = Uuid::random();
+        $startTime = Carbon::now()->subHour();
+        $stopTime = Carbon::now();
+        $frame = TestEntityFactory::createFrame(
+            $uuid,
+            $startTime,
+            $stopTime,
+            $this->activity,
+            false,
+            $this->role,
+            'Same payload'
+        );
+
+        $stored = [$uuid->getHex() => $frame->toArray()];
+
+        $this->storage
+            ->expects($this->once())
+            ->method('read')
+            ->willReturn($stored);
+
+        $this->storage
+            ->expects($this->never())
+            ->method('write');
+
+        $this->repository->save($frame);
+    }
+
+    public function testSaveNoOpWhenPayloadIdenticalWithReorderedKeys(): void
+    {
+        $uuid = Uuid::random();
+        $startTime = Carbon::now()->subHour();
+        $stopTime = Carbon::now();
+        $frame = TestEntityFactory::createFrame(
+            $uuid,
+            $startTime,
+            $stopTime,
+            $this->activity,
+            false,
+            $this->role,
+            'Reordered keys'
+        );
+
+        $storedPayload = $this->reverseAssocKeyOrderRecursive($frame->toArray());
+        $stored = [$uuid->getHex() => $storedPayload];
+
+        $this->storage
+            ->expects($this->once())
+            ->method('read')
+            ->willReturn($stored);
+
+        $this->storage
+            ->expects($this->never())
+            ->method('write');
+
+        $this->repository->save($frame);
+    }
+
+    public function testAllocateUnusedFrameUuidSkipsPersistedKeys(): void
+    {
+        $reservedHex = 'f1b2c3d4';
+        $reserved = Uuid::fromHex($reservedHex);
+        $reservedFrame = TestEntityFactory::createFrame(
+            $reserved,
+            Carbon::now()->subHour(),
+            Carbon::now(),
+            $this->activity,
+            false,
+            $this->role,
+            'Reserved'
+        );
+
+        $this->storage
+            ->method('read')
+            ->willReturnOnConsecutiveCalls(
+                [$reservedHex => $reservedFrame->toArray()],
+                []
+            );
+
+        $allocated = $this->repository->allocateUnusedFrameUuid();
+        $this->assertNotSame($reservedHex, $allocated->getHex());
+    }
+
+    public function testAllocateUnusedFrameUuidSkipsCurrentFrameUuid(): void
+    {
+        $currentUuid = Uuid::random();
+        $currentFrame = TestEntityFactory::createActiveFrame(
+            $currentUuid,
+            Carbon::now()->subMinutes(30),
+            $this->activity,
+            false,
+            $this->role,
+            'Current'
+        );
+
+        $this->storage
+            ->method('read')
+            ->willReturnOnConsecutiveCalls(
+                [],
+                $currentFrame->toArray()
+            );
+
+        $allocated = $this->repository->allocateUnusedFrameUuid();
+        $this->assertNotSame($currentUuid->getHex(), $allocated->getHex());
+    }
+
+    public function testAllocateUnusedFrameUuidWhenNoPersistedFramesAndNoCurrent(): void
+    {
+        $this->storage
+            ->method('read')
+            ->willReturnOnConsecutiveCalls(
+                [],
+                []
+            );
+
+        $allocated = $this->repository->allocateUnusedFrameUuid();
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{8}$/', $allocated->getHex());
+        $this->assertFalse(ctype_digit($allocated->getHex()), 'UUID must not be all decimal digits');
     }
 
     public function testSaveActiveFrameThrowsException(): void
@@ -1763,5 +1918,20 @@ class FrameRepositoryTest extends RepositoryTestCase
         $result = $this->repository->getCurrent();
 
         $this->assertNull($result);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function reverseAssocKeyOrderRecursive(array $data): array
+    {
+        $reversed = array_reverse($data, true);
+        $out = [];
+        foreach ($reversed as $key => $value) {
+            $out[$key] = is_array($value) ? $this->reverseAssocKeyOrderRecursive($value) : $value;
+        }
+
+        return $out;
     }
 }

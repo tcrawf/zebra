@@ -161,7 +161,9 @@ readonly class Track implements TrackInterface
             $activity,
             $isIndividual,
             $role,
-            $description ?? ''
+            $description ?? '',
+            null,
+            $this->frameRepository->allocateUnusedFrameUuid()
         );
 
         // Save as current frame
@@ -287,7 +289,9 @@ readonly class Track implements TrackInterface
             $activity,
             $isIndividual,
             $role,
-            $description ?? ''
+            $description ?? '',
+            null,
+            $this->frameRepository->allocateUnusedFrameUuid()
         );
 
         // Save frame

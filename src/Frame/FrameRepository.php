@@ -7,12 +7,16 @@ namespace Tcrawf\Zebra\Frame;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use InvalidArgumentException;
+use RuntimeException;
 use Tcrawf\Zebra\Activity\ActivityInterface;
 use Tcrawf\Zebra\Activity\ActivityRepositoryInterface;
 use Tcrawf\Zebra\EntityKey\EntitySource;
+use Tcrawf\Zebra\Exception\FrameUuidCollisionException;
 use Tcrawf\Zebra\Role\RoleInterface;
 use Tcrawf\Zebra\Timezone\TimezoneFormatter;
 use Tcrawf\Zebra\User\UserRepositoryInterface;
+use Tcrawf\Zebra\Uuid\Uuid;
+use Tcrawf\Zebra\Uuid\UuidInterface;
 
 /**
  * Repository for storing and retrieving frames.
@@ -46,6 +50,7 @@ class FrameRepository implements FrameRepositoryInterface
      * @param FrameInterface $frame
      * @return void
      * @throws InvalidArgumentException If the frame does not have a stop datetime
+     * @throws FrameUuidCollisionException If the UUID already exists with different data
      */
     public function save(FrameInterface $frame): void
     {
@@ -58,11 +63,78 @@ class FrameRepository implements FrameRepositoryInterface
         }
 
         $frames = $this->loadFromStorage();
+        $payload = $frame->toArray();
 
-        // Store frame by UUID (will overwrite if UUID already exists)
-        $frames[$frame->uuid] = $frame->toArray();
+        if (isset($frames[$frame->uuid])) {
+            if (!$this->framePayloadsAreEquivalent($frames[$frame->uuid], $payload)) {
+                throw new FrameUuidCollisionException(
+                    "Cannot save frame: UUID {$frame->uuid} already exists with different data."
+                );
+            }
+
+            return;
+        }
+
+        $frames[$frame->uuid] = $payload;
 
         $this->saveToStorage($frames);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function allocateUnusedFrameUuid(): UuidInterface
+    {
+        /** @var array<string, true> $used */
+        $used = [];
+        foreach (array_keys($this->loadFromStorage()) as $uuid) {
+            $used[$uuid] = true;
+        }
+
+        $current = $this->getCurrent();
+        if ($current !== null) {
+            $used[$current->uuid] = true;
+        }
+
+        $maxAttempts = 256;
+        for ($attempt = 0; $attempt < $maxAttempts; ++$attempt) {
+            $candidate = Uuid::random();
+            if (!isset($used[$candidate->getHex()])) {
+                return $candidate;
+            }
+        }
+
+        throw new RuntimeException(
+            "Failed to allocate an unused frame UUID after {$maxAttempts} attempts."
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $stored
+     * @param array<string, mixed> $incoming
+     */
+    private function framePayloadsAreEquivalent(array $stored, array $incoming): bool
+    {
+        $a = $stored;
+        $b = $incoming;
+        $this->ksortRecursive($a);
+        $this->ksortRecursive($b);
+
+        return $a === $b;
+    }
+
+    /**
+     * @param array<mixed> $array
+     */
+    private function ksortRecursive(array &$array): void
+    {
+        foreach ($array as &$value) {
+            if (is_array($value)) {
+                $this->ksortRecursive($value);
+            }
+        }
+        unset($value);
+        ksort($array);
     }
 
     /**
