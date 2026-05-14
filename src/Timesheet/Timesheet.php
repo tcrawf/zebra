@@ -35,17 +35,17 @@ class Timesheet implements TimesheetInterface
 
     public ActivityInterface $activity {
         get {
-            if ($this->activityRepository !== null) {
-                $loadedActivity = $this->activityRepository->get($this->activityKey);
-                if ($loadedActivity !== null) {
-                    $this->activityCache = $loadedActivity;
-                    return $loadedActivity;
-                }
-            }
+    if ($this->activityRepository !== null) {
+        $loadedActivity = $this->activityRepository->get($this->activityKey);
+        if ($loadedActivity !== null) {
+            $this->activityCache = $loadedActivity;
+            return $loadedActivity;
+        }
+    }
 
-            if ($this->activityCache !== null) {
-                return $this->activityCache;
-            }
+    if ($this->activityCache !== null) {
+        return $this->activityCache;
+    }
 
             throw new \RuntimeException(
                 'Activity not available. Timesheet was loaded without ActivityRepository.'
