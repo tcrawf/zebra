@@ -63,6 +63,10 @@ interface FrameInterface
         get;
     }
 
+    public int|null $roleId {
+        get;
+    }
+
     public RoleInterface|null $role {
         get;
     }
