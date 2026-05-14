@@ -427,15 +427,13 @@ class LocalTimesheetRepositoryTest extends TestCase
 
         $activityRepository = $this->createMock(ActivityRepositoryInterface::class);
         $activityRepository
-            ->expects($this->once())
-            ->method('get')
-            ->willReturn($this->activity);
+            ->expects($this->never())
+            ->method('get');
 
         $userRepository = $this->createMock(UserRepositoryInterface::class);
         $userRepository
-            ->expects($this->once())
-            ->method('getCurrentUserRoleById')
-            ->willReturn($this->role);
+            ->expects($this->never())
+            ->method('getCurrentUserRoleById');
 
         $repository = new LocalTimesheetRepository(
             $storageFactory,
@@ -602,15 +600,13 @@ class LocalTimesheetRepositoryTest extends TestCase
 
         $activityRepository = $this->createMock(ActivityRepositoryInterface::class);
         $activityRepository
-            ->expects($this->once())
-            ->method('get')
-            ->willReturn($this->activity);
+            ->expects($this->never())
+            ->method('get');
 
         $userRepository = $this->createMock(UserRepositoryInterface::class);
         $userRepository
-            ->expects($this->once())
-            ->method('getCurrentUserRoleById')
-            ->willReturn($this->role);
+            ->expects($this->never())
+            ->method('getCurrentUserRoleById');
 
         $repository = new LocalTimesheetRepository(
             $storageFactory,

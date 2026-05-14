@@ -59,24 +59,43 @@ class Frame implements FrameInterface
             return $loadedActivity;
         }
     }
-            // Otherwise return cached activity (set during construction)
-    if ($this->activityCache === null) {
-        throw new \RuntimeException(
-            'Activity not available. Frame was loaded without ActivityRepository.'
-        );
+
+    if ($this->activityCache !== null) {
+        return $this->activityCache;
     }
-            return $this->activityCache;
+
+            // Repository returned null and no cache yet: materialize a
+            // "Deleted Activity" placeholder once so subsequent accesses
+            // (and toString output) keep working when the underlying
+            // activity has been removed.
+    if ($this->activityRepository !== null) {
+        $dummyProjectKey = match ($this->activityKey->source) {
+            EntitySource::Local => EntityKey::local(Uuid::random()),
+            EntitySource::Zebra => EntityKey::zebra(0),
+        };
+                $this->activityCache = new Activity(
+                    $this->activityKey,
+                    "Deleted Activity (ID: {$this->activityKey->toString()})",
+                    '',
+                    $dummyProjectKey,
+                    null,
+                    false
+                );
+        return $this->activityCache;
+    }
+
+            throw new \RuntimeException(
+                'Activity not available. Frame was loaded without ActivityRepository.'
+            );
         }
     }
 
     public RoleInterface|null $role {
         get {
-            // If no role ID, return null
     if ($this->roleId === null) {
         return null;
     }
 
-            // If repository is available, try to load fresh role
     if ($this->userRepository !== null) {
         $loadedRole = $this->userRepository->getCurrentUserRoleById($this->roleId);
         if ($loadedRole !== null) {
@@ -84,12 +103,13 @@ class Frame implements FrameInterface
             return $loadedRole;
         }
     }
-            // Otherwise return cached role (set during construction)
+
     if ($this->roleCache === null) {
         throw new \RuntimeException(
             'Role not available. Frame was loaded without UserRepository.'
         );
     }
+
             return $this->roleCache;
         }
     }
@@ -107,38 +127,27 @@ class Frame implements FrameInterface
         ?UserRepositoryInterface $userRepository = null
     ) {
         // Handle activity parameter: can be ActivityInterface (for new frames)
-        // or EntityKeyInterface (for loaded frames)
+        // or EntityKeyInterface (for loaded frames). Loaded frames defer the
+        // repository lookup to the `activity` getter — the persisted data
+        // was already validated at save time, so we don't need the activity
+        // object to validate construction.
         if ($activityOrKey instanceof ActivityInterface) {
             $this->activityKey = $activityOrKey->entityKey;
             $this->activityCache = $activityOrKey;
         } else {
             $this->activityKey = $activityOrKey;
             $this->activityRepository = $activityRepository;
-            // Load activity for validation if repository is available
-            if ($activityRepository !== null) {
-                $loadedActivity = $activityRepository->get($this->activityKey);
-                if ($loadedActivity !== null) {
-                    $this->activityCache = $loadedActivity;
-                } else {
-                    // Create placeholder activity for missing activities
-                    // Use a dummy project key matching the activity source
-                    $dummyProjectKey = match ($this->activityKey->source) {
-                        EntitySource::Local => EntityKey::local(Uuid::random()),
-                        EntitySource::Zebra => EntityKey::zebra(0),
-                    };
-                    $this->activityCache = new Activity(
-                        $this->activityKey,
-                        "Deleted Activity (ID: {$this->activityKey->toString()})",
-                        '',
-                        $dummyProjectKey,
-                        null,
-                        false
-                    );
-                }
+            if ($activityRepository === null) {
+                throw new InvalidArgumentException(
+                    'Activity is required for frame validation. ' .
+                    'Either provide ActivityInterface or ActivityRepositoryInterface with EntityKeyInterface.'
+                );
             }
         }
 
-        // Handle role parameter: can be RoleInterface (for new frames) or int (role ID for loaded frames)
+        // Handle role parameter: RoleInterface (new frames) or int (loaded
+        // frames). Loaded frames defer the repository lookup to the `role`
+        // getter.
         if ($roleOrId instanceof RoleInterface) {
             $this->roleId = $roleOrId->id;
             $this->roleCache = $roleOrId;
@@ -146,40 +155,26 @@ class Frame implements FrameInterface
         } elseif (is_int($roleOrId)) {
             $this->roleId = $roleOrId;
             $this->userRepository = $userRepository;
-            // Load role for validation if repository is available
-            if ($userRepository !== null) {
-                $loadedRole = $userRepository->getCurrentUserRoleById($this->roleId);
-                if ($loadedRole !== null) {
-                    $this->roleCache = $loadedRole;
-                }
-            }
         } else {
             $this->roleId = null;
             $this->roleCache = null;
         }
 
-        // Use cached activity for validation
-        $activity = $this->activityCache;
-        if ($activity === null) {
-            throw new InvalidArgumentException(
-                'Activity is required for frame validation. ' .
-                'Either provide ActivityInterface or ActivityRepositoryInterface with EntityKeyInterface.'
-            );
-        }
-
-        // Use cached role for validation (if not individual)
-        $role = $this->roleCache;
-
-        // Validate: if activity requires role and not individual, role must be provided
-        // Check this BEFORE the general role validation so we get the right error message
-        if ($activity->roleRequired && !$isIndividual && $this->roleId === null) {
+        // Activity-required validation only runs when the live Activity
+        // object was supplied (the new-frame creation path). Loaded frames
+        // trust persisted state.
+        if (
+            $this->activityCache !== null
+            && $this->activityCache->roleRequired
+            && !$isIndividual
+            && $this->roleId === null
+        ) {
             throw new InvalidArgumentException(
                 'Activity requires a role. ' .
                 'Either provide a role or mark the frame as individual.'
             );
         }
 
-        // Validate: if not individual, role must be provided
         if (!$isIndividual && $this->roleId === null) {
             throw new InvalidArgumentException(
                 'Frame must have either a role or be marked as individual. ' .
@@ -187,7 +182,6 @@ class Frame implements FrameInterface
             );
         }
 
-        // Validate: if individual, role should be null
         if ($isIndividual && $this->roleId !== null) {
             throw new InvalidArgumentException(
                 'Individual frames cannot have a role. ' .
