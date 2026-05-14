@@ -8,6 +8,8 @@ use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use InvalidArgumentException;
 use Tcrawf\Zebra\Activity\ActivityInterface;
+use Tcrawf\Zebra\Activity\ActivityRepositoryInterface;
+use Tcrawf\Zebra\EntityKey\EntityKeyInterface;
 use Tcrawf\Zebra\EntityKey\EntitySource;
 use Tcrawf\Zebra\Role\RoleInterface;
 use Tcrawf\Zebra\Timezone\TimezoneFormatter;
@@ -27,6 +29,30 @@ class Timesheet implements TimesheetInterface
             return $this->dateValue->copy();
         }
     }
+    public EntityKeyInterface $activityKey;
+    private ?ActivityInterface $activityCache = null;
+    private ?ActivityRepositoryInterface $activityRepository = null;
+
+    public ActivityInterface $activity {
+        get {
+            if ($this->activityRepository !== null) {
+                $loadedActivity = $this->activityRepository->get($this->activityKey);
+                if ($loadedActivity !== null) {
+                    $this->activityCache = $loadedActivity;
+                    return $loadedActivity;
+                }
+            }
+
+            if ($this->activityCache !== null) {
+                return $this->activityCache;
+            }
+
+            throw new \RuntimeException(
+                'Activity not available. Timesheet was loaded without ActivityRepository.'
+            );
+        }
+    }
+
     public int|null $roleId;
     private ?RoleInterface $roleCache = null;
     private ?UserRepositoryInterface $userRepository = null;
@@ -67,7 +93,7 @@ class Timesheet implements TimesheetInterface
 
     public function __construct(
         UuidInterface $uuid,
-        public ActivityInterface $activity,
+        ActivityInterface|EntityKeyInterface $activityOrKey,
         public string $description,
         public string|null $clientDescription,
         public float $time,
@@ -78,30 +104,51 @@ class Timesheet implements TimesheetInterface
         public int|null $zebraId = null,
         CarbonInterface|int|string|null $updatedAt = null,
         public bool $doNotSync = false,
-        ?UserRepositoryInterface $userRepository = null
+        ?UserRepositoryInterface $userRepository = null,
+        ?ActivityRepositoryInterface $activityRepository = null
     ) {
         // Store UUID hex value
         $this->uuid = $uuid->getHex();
 
-        // Validate that activity is from Zebra source
-        if ($activity->entityKey->source !== EntitySource::Zebra) {
-            throw new InvalidArgumentException(
-                'Timesheet can only accept Zebra activities, got: ' . $activity->entityKey->source->value
-            );
-        }
+        // Handle activity parameter: can be ActivityInterface (for new
+        // timesheets) or EntityKeyInterface (for loaded timesheets). Loaded
+        // timesheets defer the repository lookup to the `activity` getter —
+        // the persisted data was already validated at save time.
+        if ($activityOrKey instanceof ActivityInterface) {
+            // Validate that activity is from Zebra source
+            if ($activityOrKey->entityKey->source !== EntitySource::Zebra) {
+                throw new InvalidArgumentException(
+                    'Timesheet can only accept Zebra activities, got: '
+                    . $activityOrKey->entityKey->source->value
+                );
+            }
 
-        // Validate that activity's project is also from Zebra source
-        if ($activity->projectEntityKey->source !== EntitySource::Zebra) {
-            throw new InvalidArgumentException(
-                'Timesheet activity must have a Zebra project'
-            );
-        }
+            // Validate that activity's project is also from Zebra source
+            if ($activityOrKey->projectEntityKey->source !== EntitySource::Zebra) {
+                throw new InvalidArgumentException(
+                    'Timesheet activity must have a Zebra project'
+                );
+            }
 
-        // Validate that activity's project ID is an integer
-        if (!is_int($activity->projectEntityKey->id)) {
-            throw new InvalidArgumentException(
-                'Timesheet activity project ID must be an integer'
-            );
+            // Validate that activity's project ID is an integer
+            if (!is_int($activityOrKey->projectEntityKey->id)) {
+                throw new InvalidArgumentException(
+                    'Timesheet activity project ID must be an integer'
+                );
+            }
+
+            $this->activityKey = $activityOrKey->entityKey;
+            $this->activityCache = $activityOrKey;
+        } else {
+            $this->activityKey = $activityOrKey;
+            $this->activityRepository = $activityRepository;
+            if ($activityRepository === null) {
+                throw new InvalidArgumentException(
+                    'Activity is required for timesheet validation. ' .
+                    'Either provide ActivityInterface or '
+                    . 'ActivityRepositoryInterface with EntityKeyInterface.'
+                );
+            }
         }
 
         // Validate time is a multiple of 0.25
@@ -119,7 +166,9 @@ class Timesheet implements TimesheetInterface
             );
         }
 
-        // Handle role parameter: can be RoleInterface (for new timesheets) or int (role ID for loaded timesheets)
+        // Handle role parameter: RoleInterface (new timesheets) or int
+        // (loaded timesheets). Loaded timesheets defer the repository lookup
+        // to the `role` getter.
         if ($roleOrId instanceof RoleInterface) {
             $this->roleId = $roleOrId->id;
             $this->roleCache = $roleOrId;
@@ -127,32 +176,23 @@ class Timesheet implements TimesheetInterface
         } elseif (is_int($roleOrId)) {
             $this->roleId = $roleOrId;
             $this->userRepository = $userRepository;
-            // Load role for validation if repository is available
-            if ($userRepository !== null) {
-                $loadedRole = $userRepository->getCurrentUserRoleById($this->roleId);
-                if ($loadedRole !== null) {
-                    $this->roleCache = $loadedRole;
-                }
-            }
         } else {
             $this->roleId = null;
             $this->roleCache = null;
         }
 
-        // Validate: if activity requires role and not individual action, role must be provided
-        // Check this BEFORE the general role validation so we get the right error message
-        if ($activity->roleRequired && !$individualAction && $this->roleId === null) {
+        // Activity-required validation only runs when the live Activity
+        // object was supplied (the new-timesheet creation path). Loaded
+        // timesheets trust persisted state.
+        if (
+            $this->activityCache !== null
+            && $this->activityCache->roleRequired
+            && !$individualAction
+            && $this->roleId === null
+        ) {
             throw new InvalidArgumentException(
                 'Activity requires a role. ' .
                 'Either provide a role or mark the timesheet as individual action.'
-            );
-        }
-
-        // Validate that either role is set or individualAction is true
-        // BUT: activities with roleRequired=false (like holidays) can have no role even if not individual
-        if ($this->roleId === null && !$individualAction && $activity->roleRequired) {
-            throw new InvalidArgumentException(
-                'Either role must be set or individualAction must be true'
             );
         }
 
@@ -246,6 +286,7 @@ class Timesheet implements TimesheetInterface
 
     /**
      * Get the project ID from the activity's project entity key.
+     * Triggers activity hydration if it wasn't pre-cached.
      */
     public function getProjectId(): int
     {
@@ -254,14 +295,15 @@ class Timesheet implements TimesheetInterface
 
     public function toArray(): array
     {
-        // Normalized storage format: only store activity key and role ID
-        // Project ID is derived from activity, so no need to store it separately
+        // Normalized storage format: only store activity key and role ID.
+        // Uses the cheap `activityKey` field so serialization does not
+        // trigger lazy activity hydration.
         return [
             'uuid' => $this->uuid,
             'activity' => [
                 'key' => [
-                    'source' => $this->activity->entityKey->source->value,
-                    'id' => $this->activity->entityKey->toString(),
+                    'source' => $this->activityKey->source->value,
+                    'id' => $this->activityKey->toString(),
                 ],
             ],
             'description' => $this->description,

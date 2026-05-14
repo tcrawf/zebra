@@ -724,7 +724,11 @@ class FrameRepository implements FrameRepositoryInterface
             $matches = $frameActivityKey->source === $activityKey->source
                 && $frameActivityKey->toString() === $activityKey->toString();
 
-            if ($matches && !$frame->isActive() && !$frame->isIndividual && $frame->role !== null) {
+            // Filter on the cheap `roleId` property — avoids triggering
+            // the lazy `role` getter (which would hit the user repository)
+            // for every frame. Only the winner's `->role` is dereferenced
+            // below, after the sort.
+            if ($matches && !$frame->isActive() && !$frame->isIndividual && $frame->roleId !== null) {
                 $activityFrames[] = $frame;
             }
         }

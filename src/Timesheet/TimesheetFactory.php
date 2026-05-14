@@ -93,55 +93,46 @@ class TimesheetFactory
             throw new TrackException("Invalid array format: 'frameUuids' must be an array");
         }
 
-        // Handle activity: support both old format (full activity data) and new format (only key)
-        $activity = $data['activity'];
-        if (is_array($activity)) {
-            // Require activity key
-            if (!isset($activity['key'])) {
+        // Handle activity: support both old format (full activity data) and new format (only key).
+        // The activity lookup is deferred to Timesheet's lazy `activity` getter — pass the
+        // EntityKey + repository through. The old-format backward-compat path (no repository
+        // present and inline activity data) still constructs a real Activity object eagerly.
+        $activityData = $data['activity'];
+        $activityForConstructor = null;
+
+        if (is_array($activityData)) {
+            if (!isset($activityData['key'])) {
                 throw new TrackException(
                     "Invalid array format: 'activity' must have 'key' field"
                 );
             }
 
-            $activityEntityKey = self::createEntityKeyFromArray($activity['key']);
+            $activityEntityKey = self::createEntityKeyFromArray($activityData['key']);
 
-            // Load activity from repository if available
             if ($activityRepository !== null) {
-                $loadedActivity = $activityRepository->get($activityEntityKey);
-                if ($loadedActivity !== null) {
-                    $activity = $loadedActivity;
-                } else {
-                    // Activity not found in repository - this shouldn't happen with normalized data
-                    // But handle gracefully for migration period
-                    throw new TrackException(
-                        "Activity not found in repository for key: {$activityEntityKey->toString()}"
-                    );
-                }
+                // Defer the repo lookup to Timesheet::$activity getter.
+                $activityForConstructor = $activityEntityKey;
+            } elseif (isset($activityData['project']) && isset($activityData['name'])) {
+                // Old format: reconstruct activity from stored data (no repo to defer to).
+                $projectEntityKey = self::createEntityKeyFromArray($activityData['project']);
+                $activityForConstructor = new Activity(
+                    $activityEntityKey,
+                    $activityData['name'],
+                    $activityData['desc'] ?? '',
+                    $projectEntityKey,
+                    $activityData['alias'] ?? null,
+                    $activityData['roleRequired'] ?? false
+                );
             } else {
-                // No repository available - try to reconstruct from old format data if present
-                // This handles backward compatibility during migration
-                if (isset($activity['project']) && isset($activity['name'])) {
-                    // Old format: reconstruct activity from stored data
-                    $projectEntityKey = self::createEntityKeyFromArray($activity['project']);
-                    $activity = new Activity(
-                        $activityEntityKey,
-                        $activity['name'],
-                        $activity['desc'] ?? '',
-                        $projectEntityKey,
-                        $activity['alias'] ?? null,
-                        $activity['roleRequired'] ?? false
-                    );
-                } else {
-                    throw new TrackException(
-                        "Invalid array format: 'activity' must have 'key' field and " .
-                        "ActivityRepositoryInterface must be provided, " .
-                        "or old format with 'name' and 'project' fields"
-                    );
-                }
+                throw new TrackException(
+                    "Invalid array format: 'activity' must have 'key' field and " .
+                    "ActivityRepositoryInterface must be provided, " .
+                    "or old format with 'name' and 'project' fields"
+                );
             }
-        }
-
-        if (!($activity instanceof ActivityInterface)) {
+        } elseif ($activityData instanceof ActivityInterface) {
+            $activityForConstructor = $activityData;
+        } else {
             throw new TrackException(
                 "Invalid array format: 'activity' must be an array with 'key' field or ActivityInterface"
             );
@@ -171,7 +162,7 @@ class TimesheetFactory
 
         return new Timesheet(
             $uuid,
-            $activity,
+            $activityForConstructor,
             $data['description'],
             $data['clientDescription'] ?? null,
             $data['time'],
@@ -182,7 +173,8 @@ class TimesheetFactory
             $data['zebraId'] ?? null,
             $data['updatedAt'] ?? null,
             $doNotSync,
-            $userRepository
+            $userRepository,
+            $activityRepository
         );
     }
 
